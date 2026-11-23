@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Einstellungen</title>
+<style>
+  :root{--bg:#05080d;--bg2:#0a111b;--line:rgba(120,200,255,.14);--line2:rgba(120,200,255,.26);--txt:#d8ecf7;--dim:#8aa2b3;--cyan:#3ee0ff;--amber:#ffb547;--red:#ff5a6a;--green:#47f0a1;
+        --mono:ui-monospace,"Cascadia Mono","JetBrains Mono",Consolas,monospace;--sans:"Segoe UI",Inter,system-ui,sans-serif}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(circle at 50% 0,rgba(62,224,255,.08),transparent 50%),var(--bg);color:var(--txt);font-family:var(--sans)}
+  main{max-width:860px;margin:0 auto;padding:36px 28px 60px}
+  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:26px}
+  h1{margin:0;font-family:var(--mono);font-weight:500;font-size:13px;letter-spacing:.32em;text-transform:uppercase}
+  a.back{color:var(--cyan);font-size:14px;text-decoration:none}
+  a.back:hover{text-decoration:underline}
+  .intro{color:var(--dim);font-size:14px;line-height:1.6;margin:0 0 26px}
+  fieldset{border:1px solid var(--line);border-radius:14px;padding:18px 20px 8px;margin:0 0 18px;background:rgba(10,17,27,.55)}
+  legend{padding:0 8px;font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--cyan)}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px}
+  .full{grid-column:1/-1}
+  label{display:block;font-size:13px;color:var(--dim);margin:0 0 14px}
+  label span{display:block;margin-bottom:6px}
+  input,select,textarea{width:100%;height:40px;padding:0 12px;border:1px solid var(--line2);border-radius:9px;background:var(--bg2);color:var(--txt);font:inherit;font-size:14px}
+  textarea{height:70px;padding:10px 12px;resize:vertical}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
+  small{display:block;margin-top:5px;font-size:12px;color:var(--dim);line-height:1.45}
+  small.set{color:var(--green)}
+  .chk{display:flex;align-items:center;gap:10px;color:var(--txt);font-size:14px;margin:0 0 14px}
+  .chk input{width:18px;height:18px;accent-color:var(--cyan)}
+  .bar{position:sticky;bottom:0;display:flex;gap:12px;align-items:center;padding:16px 0;background:linear-gradient(transparent,var(--bg) 30%)}
+  button{height:44px;padding:0 20px;border-radius:10px;border:1px solid var(--line2);background:none;color:var(--txt);font:inherit;font-size:14px;cursor:pointer}
+  button.primary{background:var(--cyan);border-color:var(--cyan);color:#05080d;font-weight:600}
+  button:hover{border-color:var(--cyan)}
+  #result{font-family:var(--mono);font-size:12.5px;line-height:1.7}
+  .ok{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--amber)}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Einstellungen</h1>
+    <a class="back" href="/">Zurück zum Gespräch →</a>
+  </header>
+  <p class="intro">Diese App spricht direkt mit deinem Hermes-Agenten – ohne Docker. Die Schlüssel werden verschlüsselt im Benutzerkonto gespeichert (Windows: DPAPI, Linux: Schlüsselbund) und verlassen diesen PC nur in Richtung Hermes und ElevenLabs.</p>
+  <p class="intro warn" id="encWarn" hidden>⚠ Kein Schlüsselbund gefunden – die Schlüssel liegen nur kodiert, nicht verschlüsselt. Unter Linux „gnome-keyring“ bzw. KWallet installieren und die App neu starten.</p>
+
+  <form id="f" autocomplete="off">
+    <fieldset>
+      <legend>Agent</legend>
+      <div class="grid">
+        <label><span>Name des Agenten</span><input name="agentName" placeholder="Hermes"></label>
+        <label><span>Dein Vorname</span><input name="userName" placeholder="optional"><small>damit der Agent weiß, mit wem er spricht</small></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Hermes</legend>
+      <div class="grid">
+        <label class="full"><span>Adresse des API-Servers</span><input name="hermesUrl" placeholder="http://192.168.1.50:8642"><small>IP der Hermes-VM – im LAN oder per NetBird. Auf der VM muss Port 8642 für diesen PC freigegeben sein.</small></label>
+        <label class="full"><span>API-Key (API_SERVER_KEY)</span><input name="hermesKey" type="password" placeholder="••••••••"><small id="s_hermesKey"></small></label>
+        <label><span>Gesprächsfaden</span><input name="conversation" placeholder="hermesvi-pc"><small>eigener Faden für den PC – das Gedächtnis teilt sich der Agent trotzdem</small></label>
+        <label><span>Nachdenken im Sprachmodus</span><select name="reasoning"><option value="">wie in Hermes</option><option>none</option><option>minimal</option><option selected>low</option><option>medium</option><option>high</option></select></label>
+        <label><span>API-Modus</span><select name="hermesMode"><option value="responses">responses (empfohlen)</option><option value="chat">chat (ältere Hermes-Versionen)</option></select></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Stimme &amp; Spracherkennung</legend>
+      <div class="grid">
+        <label><span>Stimme</span><select name="ttsBackend"><option value="elevenlabs">ElevenLabs (wie in Hermes)</option><option value="browser">Windows-Stimme (kostenlos)</option><option value="hermes">Hermes-Audio-Plugin</option></select></label>
+        <label><span>Spracherkennung</span><select name="sttBackend"><option value="elevenlabs">ElevenLabs Scribe</option><option value="hermes">Hermes-Audio-Plugin</option></select></label>
+        <label class="full"><span>ElevenLabs-API-Key</span><input name="elevenKey" type="password" placeholder="••••••••"><small id="s_elevenKey"></small><small>Braucht die Berechtigungen „Text to Speech“ und „Speech to Text“.</small></label>
+        <label><span>Voice-ID</span><input name="elevenVoice" placeholder="pNInz6obpgDQGcFmaJgB"><small>aus ~/.hermes/config.yaml → tts.elevenlabs.voice_id</small></label>
+        <label><span>Stimm-Modell</span><select name="elevenModel"><option value="eleven_flash_v2_5">Flash v2.5 – schnell, günstig</option><option value="eleven_multilingual_v2">Multilingual v2 – höchste Qualität</option></select></label>
+        <label><span>Sprache</span><input name="sttLanguage" placeholder="de"></label>
+        <label><span>Audio-Plugin-Adresse</span><input name="audioUrl" placeholder="nur für Hermes-Audio-Plugin"></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Aufträge &amp; Log (optional)</legend>
+      <div class="grid">
+        <label class="full"><span>Adresse des Hermes-Dashboards</span><input name="dashboardUrl" placeholder="http://192.168.1.50:9119"></label>
+        <label class="full"><span>Dashboard-Token (HERMES_DASHBOARD_SESSION_TOKEN)</span><input name="dashboardToken" type="password" placeholder="••••••••"><small id="s_dashboardToken"></small></label>
+        <label><span>Log</span><select name="logName"><option value="gateway">gateway</option><option value="agent">agent</option><option value="errors">errors</option><option value="">kein Log</option></select></label>
+        <label><span>Aktualisieren alle … Sekunden</span><input name="dashboardInterval" type="number" min="5" placeholder="15"></label>
+        <label class="chk full"><input type="checkbox" name="notifyEnabled"> Der Agent meldet sich von selbst, wenn sich ein Auftrag ändert</label>
+        <label><span>Melden bei Status</span><input name="notifyStatuses" placeholder="done,failed,blocked"><small>done = erledigt, failed = fehlgeschlagen, blocked = blockiert, review = zur Prüfung</small></label>
+        <label><span>Nur diese Agenten</span><input name="notifyAssignees" placeholder="leer = alle, z. B. emilia,research"></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Desktop</legend>
+      <div class="grid">
+        <label><span>Tastenkürzel zum Sprechen</span><input name="hotkey" placeholder="CommandOrControl+Shift+Space"><small>öffnet das Fenster und schaltet das Mikrofon an/aus – auch wenn ein anderes Programm vorne ist. Ubuntu/GNOME: dort ein eigenes Tastenkürzel in den Systemeinstellungen auf <code>hermesvi --toggle-mic</code> legen.</small></label>
+        <div>
+          <label class="chk"><input type="checkbox" name="autostart"> Beim Anmelden starten</label>
+          <label class="chk"><input type="checkbox" name="startHidden"> Im Infobereich starten (ohne Fenster)</label>
+        </div>
+      </div>
+    </fieldset>
+
+    <div class="bar">
+      <button type="submit" class="primary">Speichern &amp; testen</button>
+      <button type="button" id="go">Zum Gespräch</button>
+      <div id="result" aria-live="polite"></div>
+    </div>
+  </form>
+</main>
+<script>
+const f = document.getElementById("f"), result = document.getElementById("result");
+const SECRETS = ["hermesKey", "elevenKey", "dashboardToken"];
+async function load(){
+  const s = await fetch("/api/settings").then(r=>r.json());
+  for (const el of f.elements){
+    if (!el.name || SECRETS.includes(el.name)) continue;
+    if (el.type === "checkbox") el.checked = el.name==="autostart" ? !!s.autostart : !!s[el.name];
+    else if (s[el.name] != null) el.value = s[el.name];
+  }
+  if (!s.conversation) f.conversation.value = "hermesvi-pc";
+  if (!s.agentName) f.agentName.value = "Hermes";
+  document.getElementById("encWarn").hidden = s.encrypted !== false;
+  if (s.notifyEnabled === null || s.notifyEnabled === undefined) f.notifyEnabled.checked = true;
+  if (!s.notifyStatuses) f.notifyStatuses.value = "done,failed,blocked";
+  if (s.reasoning === null || s.reasoning === undefined) f.reasoning.value = "low";
+  for (const k of SECRETS){
+    const el = document.getElementById("s_"+k);
+    if (s.secretsSet && s.secretsSet[k]) { el.textContent = "✓ gespeichert – leer lassen, um ihn zu behalten"; el.className = "set"; }
+  }
+}
+f.onsubmit = async (e) => {
+  e.preventDefault();
+  const data = {};
+  for (const el of f.elements){
+    if (!el.name) continue;
+    data[el.name] = el.type === "checkbox" ? el.checked : (el.type === "number" ? Number(el.value)||null : el.value.trim());
+  }
+  result.innerHTML = "Speichere …";
+  await fetch("/api/settings", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(data)});
+  for (const k of SECRETS) f[k].value = "";
+  await load();
+  result.innerHTML = "Teste …";
+  const s = await fetch("/api/status").then(r=>r.json());
+  const line = (ok, txt) => `<div class="${ok?"ok":"bad"}">${ok?"✓":"✗"} ${txt}</div>`;
+  result.innerHTML =
+    line(s.hermes, "Hermes " + (s.hermes ? "erreichbar" : "nicht erreichbar" + (s.hermes_error ? " ("+s.hermes_error+")" : ""))) +
+    line(!!s.model, "API-Key " + (s.model ? "gültig – Agent: "+s.model : (s.hermes ? "abgelehnt" : "ungeprüft"))) +
+    line(s.audio, "Stimme & Erkennung " + (s.audio ? "eingerichtet" : "Key fehlt")) +
+    (s.lagebild === "aus" ? '<div class="warn">– Aufträge & Log nicht eingerichtet (optional)</div>'
+      : s.lagebild_pending ? '<div class="warn">… Aufträge & Log werden geprüft – gleich nochmal testen</div>'
+      : line(!s.lagebild_error, "Aufträge & Log " + (s.lagebild_error || "verbunden")));
+};
+document.getElementById("go").onclick = () => location.href = "/";
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+HERMESVI DESKTOP – Sprach-Interface für Hermes Agent, ohne Docker
+=================================================================
+Erster Start: Die Einstellungen öffnen sich automatisch. Dort Hermes-API-URL und Key,
+optional ElevenLabs-Key (Stimme + Spracherkennung) und Dashboard-Token eintragen.
+Die Keys werden verschlüsselt im Benutzerkonto gespeichert.
+
+Update: Ordner ersetzen – Einstellungen und Keys bleiben erhalten (%APPDATA%\HermesVI\config.json).
+
+Bedienung
+   Strg+Umschalt+Leertaste   Fenster nach vorne + Mikrofon an/aus
+   Fenster schließen         läuft im Infobereich weiter (Symbol neben der Uhr)
+   Rechtsklick aufs Symbol   Einstellungen, „Mit Windows starten“, Beenden

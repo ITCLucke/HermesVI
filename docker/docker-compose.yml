@@ -1,0 +1,36 @@
+services:
+  hermesvi:
+    build: .
+    image: hermesvi:latest
+    container_name: hermesvi
+    restart: unless-stopped
+    env_file: hermesvi.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8800
+    # nur lokal auf dem Docker-Host; nach außen geht es über Caddy
+    ports:
+      - "127.0.0.1:8800:8800"
+    volumes:
+      - whisper_models:/models     # Spracherkennungs-Modell bleibt bei Updates erhalten
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+
+  caddy:
+    image: caddy:2
+    container_name: hermesvi-caddy
+    restart: unless-stopped
+    depends_on: [hermesvi]
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./Caddyfile.docker:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  whisper_models:
+  caddy_data:
+  caddy_config:

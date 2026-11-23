@@ -1,0 +1,71 @@
+{
+  "name": "hermesvi",
+  "version": "1.2.0",
+  "description": "HermesVI – Sprach- und Visual-Interface für Hermes Agent",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack:win": "electron-packager . HermesVI --platform=win32 --arch=x64 --out=dist --overwrite --icon=assets/icon.ico --ignore=^/dist --ignore=^/config.json --ignore=^/LIESMICH.txt",
+    "pack:linux": "electron-builder --linux AppImage deb --publish never"
+  },
+  "keywords": [],
+  "author": {
+    "name": "ITC Lucke",
+    "email": "hermesvi@users.noreply.github.com"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "productName": "HermesVI",
+  "homepage": "https://github.com/ITCLucke/HermesVI",
+  "build": {
+    "appId": "io.github.hermesvi",
+    "productName": "HermesVI",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "server.js",
+      "ui/**",
+      "assets/**",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "executableName": "hermesvi",
+      "icon": "assets/icon-512.png",
+      "category": "Utility",
+      "synopsis": "Sprach-Interface für Hermes Agent",
+      "artifactName": "HermesVI-Linux-v${version}-${arch}.${ext}",
+      "desktop": {
+        "entry": {
+          "Name": "HermesVI",
+          "Comment": "Sprach-Interface für Hermes Agent",
+          "StartupWMClass": "HermesVI"
+        }
+      }
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ],
+      "maintainer": "ITC Lucke <hermesvi@users.noreply.github.com>"
+    },
+    "publish": []
+  }
+}

@@ -1,0 +1,127 @@
+# Baut Windows- und Linux-App und veröffentlicht ein GitHub-Release,
+# sobald auf main eine neue Versionsnummer in VERSION steht.
+# Steht die Version schon als Release, passiert nichts.
+# Fremde Actions sind auf feste Commits gepinnt (Kommentar = Version).
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      exists: ${{ steps.v.outputs.exists }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ver="$(tr -d '[:space:]' < VERSION)"
+          [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "VERSION ungültig: '$ver'"; exit 1; }
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "tag=v$ver"    >> "$GITHUB_OUTPUT"
+          if gh release view "v$ver" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"; echo "Release v$ver gibt es schon – nichts zu tun."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  windows:
+    needs: version
+    if: needs.version.outputs.exists == 'false'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Windows-App bauen
+        run: |
+          npm ci
+          npx electron-packager . HermesVI --platform=win32 --arch=x64 --out=dist --overwrite `
+            --icon=assets/icon.ico --app-version=${{ needs.version.outputs.version }} `
+            --ignore='^/dist' --ignore='^/config.json' --ignore='^/LIESMICH.txt'
+          Copy-Item LIESMICH.txt dist/HermesVI-win32-x64/LIESMICH.txt
+          Compress-Archive -Path dist/HermesVI-win32-x64 -DestinationPath "../HermesVI-Windows-${{ needs.version.outputs.tag }}.zip" -CompressionLevel Optimal
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows
+          path: HermesVI-Windows-*.zip
+          retention-days: 3
+
+  linux:
+    needs: version
+    if: needs.version.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Linux-App bauen (AppImage + .deb)
+        run: |
+          npm ci
+          npm pkg set version=${{ needs.version.outputs.version }}
+          npx electron-builder --linux AppImage deb --publish never
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+          retention-days: 3
+
+  release:
+    needs: [version, windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Release-Text aus CHANGELOG.md
+        run: |
+          ver='${{ needs.version.outputs.version }}'
+          awk -v v="## v$ver" 'index($0,v)==1{p=1;print;next} /^## /{if(p)exit} p' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "HermesVI $ver" > notes.md
+          cat >> notes.md <<EOF
+
+          ### Downloads
+          - **Windows:** \`HermesVI-Windows-v$ver.zip\` entpacken → \`HermesVI.exe\`
+          - **Linux (Ubuntu/Mint):** \`.deb\` per Doppelklick installieren – oder \`.AppImage\` ausführbar machen und starten
+          - **Handy/Browser:** Docker-Variante im Ordner \`docker/\`
+          EOF
+      - name: Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ needs.version.outputs.tag }}" assets/* \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "HermesVI ${{ needs.version.outputs.tag }}" --notes-file notes.md

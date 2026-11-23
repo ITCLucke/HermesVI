@@ -1,0 +1,15 @@
+# Variante A – nur im NetBird-Netz, Caddy-eigenes Zertifikat
+# (Caddy-Root-Zertifikat einmal auf Handy/PC installieren, siehe README)
+hermesvi.netbird.local, 100.64.0.10 {
+    tls internal
+    reverse_proxy 127.0.0.1:8800 {
+        flush_interval -1
+    }
+}
+
+# Variante B – eigene Subdomain (z. B. hermesvi.deine-domain.de), DNS-A-Record zeigt auf die NetBird-IP.
+# Braucht ein Caddy-Build mit DNS-Plugin deines Providers (DNS-Challenge), da die IP nicht öffentlich ist.
+# hermesvi.deine-domain.de {
+#     tls { dns cloudflare {env.CF_API_TOKEN} }
+#     reverse_proxy 127.0.0.1:8800 { flush_interval -1 }
+# }
