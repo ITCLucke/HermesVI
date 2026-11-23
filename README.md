@@ -50,14 +50,25 @@ Danach `hermes gateway restart` und `systemctl --user restart hermes-dashboard`.
 
 Ein Hermes-Agent hat in der Regel vollen Terminal-Zugriff auf seinen Rechner. **Wer dem Agenten Befehle geben kann, kann alles, was der Agent kann.** Deshalb:
 
-- **Docker-Variante absichern:** im Reverse-Proxy eine Zugangssperre setzen (z. B. *Access List* im Nginx Proxy Manager) oder `APP_PASSWORD` setzen. Sonst kann jedes Gerät im Netz mit dem Agenten reden.
+- **Docker-Variante: Zugangsschutz ist Pflicht.** Entweder `APP_PASSWORD` setzen oder – wenn der Reverse-Proxy schon schützt (z. B. *Access List* im Nginx Proxy Manager) – `ALLOW_NO_AUTH=true`. Ohne eines von beiden verweigert HermesVI den Dienst.
+- **Kanban-Meldungen:** Im Modus `agent` gibt HermesVI das Ergebnis eines Auftrags an den Agenten weiter. Es kann fremde Inhalte enthalten (Mails, Webseiten) und ist trotz Kennzeichnung ein Einfallstor für Prompt-Injection. Vorsichtiger: `NOTIFY_MODE=announce` bzw. in der Desktop-App „Nur ansagen“.
+- **Mikrofon:** Freihändig heißt auch, dass Fernseher, Videos oder Gäste mitreden können. Mikro aus, wenn du nicht da bist.
+- **Hermes:** für gefährliche Befehle eine Bestätigung verlangen, soweit dein Hermes-Setup das anbietet.
 - **Firewall auf dem Hermes-Rechner:** Ports 8642 und 9119 nur für den Docker-Host und deine PCs freigeben.
 - **Dashboard-Token** ist ein Generalschlüssel fürs Hermes-Dashboard. Nie teilen, bei Verdacht neu erzeugen.
 - **Fernzugriff** nur über VPN (z. B. NetBird, WireGuard, Tailscale), nie offen ins Internet.
 - **ElevenLabs:** Key nur mit den zwei nötigen Rechten und mit Credit-Limit.
 - `chmod 600 hermesvi.env`
 
-Eingebaute Schutzmaßnahmen: Keys bleiben auf dem Server bzw. verschlüsselt im Benutzerkonto, Schutz gegen fremde Webseiten (CSRF), Desktop-Server nur auf `127.0.0.1` mit Token pro Start, Kanban-Ergebnisse werden als fremde Daten markiert (Schutz vor Prompt-Injection).
+Eingebaute Schutzmaßnahmen:
+- Keys bleiben auf dem Server bzw. verschlüsselt im Benutzerkonto (Linux: Warnung, wenn kein Schlüsselbund da ist; Einstellungsdatei nur für den eigenen Benutzer lesbar)
+- Schutz gegen fremde Webseiten (CSRF), Content-Security-Policy, kein Einbetten in fremde Seiten (Clickjacking)
+- Passwort-Sperre nach 10 Fehlversuchen, optional nur bestimmte Hostnamen (`ALLOWED_HOSTS`, gegen DNS-Rebinding)
+- Größenlimits (Text 64 KB, Sprache 10 MB, Anfrage 12 MB)
+- Desktop-Server nur auf `127.0.0.1` mit Token pro Start, Fenster kann keine fremden Seiten laden
+- Kanban-Ergebnisse werden als fremde Daten markiert; jede Meldung bearbeitet nur ein Gerät
+- Docker-Container: schreibgeschützt, ohne Root, ohne Linux-Capabilities
+- Releases mit `SHA256SUMS.txt` zum Prüfen der Downloads
 
 ## Installation
 

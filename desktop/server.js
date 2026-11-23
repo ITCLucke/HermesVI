@@ -9,6 +9,13 @@ const path = require("path");
 const UI_DIR = path.join(__dirname, "ui");
 const FINISHED = new Set(["done", "failed", "cancelled", "archived"]);
 const TASK_KEYS = ["id", "title", "assignee", "status", "started_at", "created_at", "priority"];
+const MAX_TEXT = 64 * 1024, MAX_BODY = 12 * 1024 * 1024, MAX_SESSIONS = 20;
+const SEC_HEADERS = {
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; " +
+    "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+  "X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
+};
 const DEFAULT_HINT = (user) =>
   `Du sprichst gerade per Sprache${user ? " mit " + user : ""}. Antworte kurz, natürlich und gesprochen – keine Markdown-Listen, keine Codeblöcke, keine Emojis.`;
 
@@ -45,6 +52,7 @@ function createServer(getConfig, hooks = {}) {
       logLines: Math.max(10, Number(c.logLines) || 80),
       logSkip: c.logSkip ?? "Native session startup recovery|receipt refused|kanban dispatcher: (holding|embedded)|Gateway housekeeping",
       notifyEnabled: c.notifyEnabled ?? true,
+      notifyMode: c.notifyMode === "announce" ? "announce" : "agent",
       notifyStatuses: new Set(String(c.notifyStatuses ?? "done,failed,blocked").split(",").map((x) => x.trim()).filter(Boolean)),
       notifyAssignees: new Set(String(c.notifyAssignees ?? "").split(",").map((x) => x.trim()).filter(Boolean)),
     };
@@ -53,12 +61,12 @@ function createServer(getConfig, hooks = {}) {
   // ------------------------------------------------------------ Hilfen
   const send = (res, code, body, type = "application/json") => {
     const data = typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body);
-    res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-store" });
+    res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-store", ...SEC_HEADERS });
     res.end(data);
   };
   const readBody = (req) => new Promise((resolve, reject) => {
     const chunks = []; let size = 0;
-    req.on("data", (c) => { size += c.length; if (size > 30 * 1024 * 1024) { reject(new Error("zu groß")); req.destroy(); } else chunks.push(c); });
+    req.on("data", (c) => { size += c.length; if (size > MAX_BODY) { reject(new Error("zu groß")); req.destroy(); } else chunks.push(c); });
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
@@ -89,7 +97,7 @@ function createServer(getConfig, hooks = {}) {
   async function streamChat(res, text, session) {
     const c = C();
     const out = (o) => res.write(`data: ${JSON.stringify(o)}\n\n`);
-    res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
+    res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", ...SEC_HEADERS });
     out({ type: "start" });
     try {
       if (!c.hermesUrl || !c.hermesKey) throw new Error("Hermes ist noch nicht eingerichtet (Einstellungen)");
@@ -112,6 +120,7 @@ function createServer(getConfig, hooks = {}) {
           else if (t === "response.completed") break;
         }
       } else {
+        if (!chatHistory.has(session) && chatHistory.size >= MAX_SESSIONS) chatHistory.delete(chatHistory.keys().next().value);
         const hist = chatHistory.get(session) || []; chatHistory.set(session, hist);
         hist.push({ role: "user", content: text });
         const body = { model: "hermes-agent", stream: true, messages: [{ role: "system", content: c.voiceHint }, ...hist.slice(-40)] };
@@ -126,6 +135,7 @@ function createServer(getConfig, hooks = {}) {
           for (const ch of o.choices || []) { const d = ch.delta?.content; if (d) { answer += d; out({ type: "delta", text: d }); } }
         }
         hist.push({ role: "assistant", content: answer });
+        if (hist.length > 80) hist.splice(0, hist.length - 80);
       }
     } catch (e) {
       out({ type: "error", message: e.cause?.code ? `Hermes nicht erreichbar (${e.cause.code})` : String(e.message || e) });
@@ -164,8 +174,8 @@ function createServer(getConfig, hooks = {}) {
     const c = C();
     const p = JSON.parse((await readBody(req)).toString() || "{}");
     const text = String(p.text || "").trim().slice(0, 4000);
-    const speed = Number(p.speed) || 1;
-    if (!text) { res.writeHead(204); return res.end(); }
+    const speed = Math.max(0.5, Math.min(2, Number(p.speed) || 1));
+    if (!text) { res.writeHead(204, SEC_HEADERS); return res.end(); }
     try {
       if (c.ttsBackend === "elevenlabs") {
         if (!c.elevenKey) return send(res, 503, { error: "ElevenLabs-Key fehlt (Einstellungen)" });
@@ -187,7 +197,7 @@ function createServer(getConfig, hooks = {}) {
   async function status() {
     const c = C();
     const out = { name: c.agentName, mode: c.hermesMode, tts: c.ttsBackend === "browser" ? "browser" : c.ttsBackend, stt: c.sttBackend,
-      hermes: false, audio: false, model: null, reasoning: c.reasoning || "hermes", desktop: true,
+      hermes: false, audio: false, model: null, reasoning: c.reasoning || "hermes", desktop: true, notify_mode: c.notifyMode,
       configured: !!(c.hermesUrl && c.hermesKey),
       lagebild: c.dashboardUrl && c.dashboardToken ? "dashboard" : "aus" };
     if (state.error) out.lagebild_error = state.error;
@@ -280,10 +290,17 @@ function createServer(getConfig, hooks = {}) {
       if (req.method === "GET" && url.pathname === "/manifest.webmanifest") return send(res, 200, { name: C().agentName });
       if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true });
       if (req.method === "GET" && url.pathname === "/api/status") return send(res, 200, await status());
-      if (req.method === "GET" && url.pathname === "/api/config") return send(res, 200, { name: C().agentName, tts: C().ttsBackend, desktop: true });
+      if (req.method === "GET" && url.pathname === "/api/config") return send(res, 200, { name: C().agentName, tts: C().ttsBackend, desktop: true, notify_mode: C().notifyMode });
       if (req.method === "GET" && url.pathname === "/api/notifications") {
         const after = Number(url.searchParams.get("after") ?? -1);
-        return send(res, 200, after < 0 ? { seq: noteSeq, items: [] } : { seq: noteSeq, items: notes.filter((n) => n.seq > after) });
+        return send(res, 200, after < 0 ? { seq: noteSeq, items: [] }
+          : { seq: noteSeq, items: notes.filter((n) => n.seq > after).map(({ claimed, ...n }) => n) });
+      }
+      if (req.method === "POST" && url.pathname === "/api/notifications/claim") {
+        const p = JSON.parse((await readBody(req)).toString() || "{}");
+        const n = notes.find((x) => x.seq === Number(p.seq));
+        if (!n || n.claimed) return send(res, 200, { ok: false });
+        n.claimed = true; return send(res, 200, { ok: true });
       }
       if (req.method === "GET" && url.pathname === "/api/state")
         return send(res, 200, { ...state, age: state.ts ? Math.floor(Date.now() / 1000) - state.ts : null });
@@ -291,6 +308,7 @@ function createServer(getConfig, hooks = {}) {
         const p = JSON.parse((await readBody(req)).toString() || "{}");
         const text = String(p.text || "").trim();
         if (!text) return send(res, 400, { error: "leer" });
+        if (text.length > MAX_TEXT) return send(res, 413, { error: "Nachricht zu lang (max. 64 KB)" });
         return streamChat(res, text, String(p.session || "main").slice(0, 64));
       }
       if (req.method === "POST" && url.pathname === "/api/reset") {

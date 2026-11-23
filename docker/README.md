@@ -11,6 +11,8 @@ Handy / PC (Browser)  ──NetBird──►  Caddy (HTTPS)  ──►  HermesVI
 
 Die Hermes-Keys bleiben auf dem Server; der Browser sieht sie nie.
 
+> **Zugangsschutz ist Pflicht:** In `hermesvi.env` entweder `APP_PASSWORD` setzen oder `ALLOW_NO_AUTH=true`, wenn dein Reverse-Proxy schon schützt (z. B. Access List im Nginx Proxy Manager). Ohne eines von beiden zeigt HermesVI nur einen Hinweis und nimmt keine Befehle an.
+
 ## So fühlt es sich an
 
 - App öffnen, einmal tippen (der Browser verlangt das fürs Mikro), dann einfach reden.

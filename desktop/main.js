@@ -19,7 +19,8 @@ const SECRET_KEYS = ["hermesKey", "elevenKey", "dashboardToken", "audioKey"];
 const PUBLIC_KEYS = ["agentName", "userName", "hermesUrl", "hermesMode", "conversation", "reasoning", "voiceHint",
   "sttBackend", "ttsBackend", "sttLanguage", "elevenVoice", "elevenModel", "elevenSttModel", "audioUrl",
   "dashboardUrl", "dashboardInterval", "logName", "logLines", "hotkey", "startHidden",
-  "notifyEnabled", "notifyStatuses", "notifyAssignees"];
+  "notifyEnabled", "notifyStatuses", "notifyAssignees", "notifyMode"];
+const URL_KEYS = ["hermesUrl", "audioUrl", "dashboardUrl"];
 
 let cfgPath, config = {}, win = null, tray = null, server = null, port = 0, quitting = false;
 
@@ -40,8 +41,9 @@ function loadConfig() {
 }
 function saveConfig() {
   const out = { ...config, secrets: Object.fromEntries(SECRET_KEYS.map((k) => [k, config.secrets?.[k] ? enc(config.secrets[k]) : ""])) };
-  fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
-  fs.writeFileSync(cfgPath, JSON.stringify(out, null, 2));
+  fs.mkdirSync(path.dirname(cfgPath), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(cfgPath, JSON.stringify(out, null, 2), { mode: 0o600 });
+  try { fs.chmodSync(cfgPath, 0o600); } catch {}   // auch bei schon vorhandener Datei: nur der eigene Benutzer darf lesen
 }
 // Einstellungen aus Vorabversionen (anderer App-Name) einmalig übernehmen
 function migrateOldConfig() {
@@ -70,14 +72,34 @@ const publicSettings = () => ({
   ...Object.fromEntries(PUBLIC_KEYS.map((k) => [k, config[k] ?? null])),
   secretsSet: Object.fromEntries(SECRET_KEYS.map((k) => [k, !!config.secrets?.[k]])),
   autostart: getAutostart(),
-  encrypted: safeStorage.isEncryptionAvailable(),
+  encrypted: strongEncryption(),
   platform: process.platform,
   hotkeyDefault: "CommandOrControl+Shift+Space",
 });
+// Unter Linux ohne Schlüsselbund nutzt Electron nur eine Ersatz-Kodierung („basic_text“) – das ist keine echte Verschlüsselung
+function strongEncryption() {
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  if (IS_LINUX && typeof safeStorage.getSelectedStorageBackend === "function") {
+    const b = safeStorage.getSelectedStorageBackend();
+    if (b === "basic_text" || b === "unknown") return false;
+  }
+  return true;
+}
+// Nur erwartete Typen und gültige Adressen übernehmen
+function cleanValue(k, v) {
+  if (v === null || typeof v === "boolean" || typeof v === "number") return Number.isFinite(v) || typeof v !== "number" ? v : null;
+  if (typeof v !== "string") return undefined;
+  v = v.trim().slice(0, k === "voiceHint" ? 2000 : 500);
+  if (URL_KEYS.includes(k) && v) {
+    try { const u = new URL(v); if (!["http:", "https:"].includes(u.protocol)) return undefined; } catch { return undefined; }
+  }
+  return v;
+}
 async function saveSettings(p) {
-  for (const k of PUBLIC_KEYS) if (k in p) config[k] = p[k];
+  if (!p || typeof p !== "object") return;
+  for (const k of PUBLIC_KEYS) if (k in p) { const v = cleanValue(k, p[k]); if (v !== undefined) config[k] = v; }
   config.secrets = config.secrets || {};
-  for (const k of SECRET_KEYS) if (typeof p[k] === "string" && p[k].trim() !== "") config.secrets[k] = p[k].trim();
+  for (const k of SECRET_KEYS) if (typeof p[k] === "string" && p[k].trim() !== "") config.secrets[k] = p[k].trim().slice(0, 500);
   for (const k of SECRET_KEYS) if (p["clear_" + k]) config.secrets[k] = "";
   if (typeof p.autostart === "boolean") setAutostart(p.autostart);
   saveConfig();
@@ -145,6 +167,7 @@ app.whenReady().then(async () => {
   cfgPath = path.join(app.getPath("userData"), "config.json");
   migrateOldConfig();
   loadConfig();
+  if (fs.existsSync(cfgPath)) { try { fs.chmodSync(cfgPath, 0o600); } catch {} }
   // Mikrofon nur für die eigene Oberfläche erlauben
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb, details) => {
     const ok = (perm === "media" || perm === "audioCapture" || perm === "notifications") && /^http:\/\/127\.0\.0\.1:\d+\//.test(details.requestingUrl || wc.getURL());

@@ -16,6 +16,9 @@ services:
     read_only: true
     tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 200
+    mem_limit: 2g                 # lokales Whisper „medium“ braucht mehr → erhöhen
 
   caddy:
     image: caddy:2

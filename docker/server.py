@@ -49,6 +49,15 @@ EDGE_VOICE      = env("EDGE_VOICE", "de-DE-ConradNeural")
 STT_LANGUAGE    = env("STT_LANGUAGE", "de")
 VOICE_HINT      = env("VOICE_HINT", "Du sprichst gerade per Sprache. Antworte kurz, natürlich und gesprochen – keine Markdown-Listen, keine Codeblöcke, keine Emojis.")
 APP_PASSWORD    = env("APP_PASSWORD")
+# Ohne Passwort nur, wenn ausdrücklich gewollt (z. B. Zugangsschutz im Reverse-Proxy)
+ALLOW_NO_AUTH   = env("ALLOW_NO_AUTH").lower() in ("1", "true", "yes", "ja")
+# Optional: nur diese Hostnamen annehmen (Schutz gegen DNS-Rebinding), z. B. hermesvi.lan.example
+ALLOWED_HOSTS   = {h.strip().lower() for h in env("ALLOWED_HOSTS").split(",") if h.strip()}
+# Kanban-Meldungen: agent = Agent fasst das Ergebnis zusammen | announce = nur Titel + Status ansagen
+NOTIFY_MODE     = env("NOTIFY_MODE", "agent") if env("NOTIFY_MODE", "agent") in ("agent", "announce") else "agent"
+MAX_TEXT        = 64 * 1024            # Zeichen pro Nachricht
+MAX_AUDIO       = 10 * 1024 * 1024     # Bytes pro Sprachaufnahme
+MAX_BODY        = 12 * 1024 * 1024     # Bytes pro Anfrage
 NOTIFY_TOKEN    = env("NOTIFY_TOKEN")      # nur für die optionale Brücke auf der Hermes-VM (POST /api/state)
 
 # Aufträge + Log direkt aus dem Hermes-Dashboard (empfohlen, nichts auf der Hermes-VM nötig)
@@ -119,6 +128,15 @@ def _transcribe_local(audio: bytes) -> str:
 _chat_history: dict[str, list[dict]] = {}
 
 
+_MAX_SESSIONS = 20
+
+
+def _history(session: str) -> list[dict]:
+    if session not in _chat_history and len(_chat_history) >= _MAX_SESSIONS:
+        _chat_history.pop(next(iter(_chat_history)))      # älteste Sitzung verwerfen
+    return _chat_history.setdefault(session, [])
+
+
 def hermes_headers(session: str | None = None) -> dict:
     h = {"Authorization": f"Bearer {HERMES_KEY}", "Content-Type": "application/json"}
     if session:
@@ -127,11 +145,14 @@ def hermes_headers(session: str | None = None) -> dict:
     return h
 
 
-# ---------------------------------------------------------------- Passwortschutz (optional)
 # ---------------------------------------------------------------- Schutz gegen fremde Webseiten (CSRF)
 # Eine fremde Seite im selben Browser darf dem Agenten keine Befehle schicken. Browser senden bei
 # jeder Anfrage von einer anderen Seite den Herkunfts-Header (Origin / Sec-Fetch-Site) mit.
 _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+def _req_host(request: Request) -> str:
+    return (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip().lower()
 
 
 def _same_origin(request: Request) -> bool:
@@ -140,19 +161,23 @@ def _same_origin(request: Request) -> bool:
         return False
     origin = request.headers.get("origin")
     if origin and origin != "null":
-        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
         from urllib.parse import urlparse
-        if urlparse(origin).netloc.lower() != host.split(",")[0].strip().lower():
+        if urlparse(origin).netloc.lower() != _req_host(request):
             return False
     elif origin == "null":
         return False
     return True
 
 
+def _is_bridge(request: Request) -> bool:
+    """Brücke auf der Hermes-VM: nur POST /api/state, hat ein eigenes Token."""
+    return request.method == "POST" and request.url.path == "/api/state"
+
+
 @app.middleware("http")
 async def csrf_guard(request: Request, call_next):
     path = request.url.path
-    if request.method not in _SAFE_METHODS and path.startswith("/api/") and path != "/api/state":
+    if request.method not in _SAFE_METHODS and path.startswith("/api/") and not _is_bridge(request):
         if not _same_origin(request):
             return JSONResponse({"error": "Anfrage von fremder Seite abgelehnt"}, status_code=403)
         ctype = request.headers.get("content-type", "")
@@ -161,20 +186,80 @@ async def csrf_guard(request: Request, call_next):
     return await call_next(request)
 
 
+# ---------------------------------------------------------------- Zugangsschutz
+_fails: dict[str, list[float]] = {}     # Fehlversuche pro Client
+_FAIL_LIMIT, _FAIL_WINDOW = 10, 900     # 10 Fehlversuche in 15 Minuten → 15 Minuten gesperrt
+
+
+def _client_ip(request: Request) -> str:
+    # hinter einem Reverse-Proxy steht die echte Adresse als letzter Eintrag in X-Forwarded-For
+    xff = request.headers.get("x-forwarded-for", "")
+    return (xff.split(",")[-1].strip() if xff else "") or (request.client.host if request.client else "?")
+
+
+_NO_AUTH_PAGE = """<!doctype html><meta charset="utf-8"><title>HermesVI – Zugangsschutz fehlt</title>
+<body style="font:16px system-ui;background:#05080d;color:#dbe7f0;max-width:640px;margin:60px auto;padding:0 20px">
+<h2>Zugangsschutz fehlt</h2><p>Ohne Schutz könnte jedes Gerät im Netz deinem Agenten Befehle geben.</p>
+<p>In <code>hermesvi.env</code> eines von beiden setzen und den Container neu starten:</p>
+<ul><li><code>APP_PASSWORD=…</code> – Passwortabfrage durch HermesVI, oder</li>
+<li><code>ALLOW_NO_AUTH=true</code> – nur, wenn dein Reverse-Proxy schon schützt (z. B. Access List im Nginx Proxy Manager).</li></ul></body>"""
+
+
 @app.middleware("http")
-async def basic_auth(request: Request, call_next):
-    if APP_PASSWORD and request.url.path not in ("/health", "/manifest.webmanifest", "/api/state"):
-        auth = request.headers.get("authorization", "")
-        ok = False
-        if auth.lower().startswith("basic "):
-            try:
-                _, pw = base64.b64decode(auth[6:]).decode().split(":", 1)
-                ok = secrets.compare_digest(pw, APP_PASSWORD)
-            except Exception:
-                ok = False
-        if not ok:
-            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="HermesVI"'})
+async def access_guard(request: Request, call_next):
+    path = request.url.path
+    if ALLOWED_HOSTS and path != "/health" and _req_host(request).rsplit(":", 1)[0] not in ALLOWED_HOSTS:
+        return JSONResponse({"error": "unbekannter Hostname"}, status_code=421)
+    cl = request.headers.get("content-length")
+    if cl and cl.isdigit() and int(cl) > MAX_BODY:
+        return JSONResponse({"error": "Anfrage zu groß"}, status_code=413)
+    if path == "/health" or _is_bridge(request):
+        return await call_next(request)
+    if not APP_PASSWORD:
+        if ALLOW_NO_AUTH:
+            return await call_next(request)
+        if path.startswith("/api/"):
+            return JSONResponse({"error": "Zugangsschutz fehlt: APP_PASSWORD oder ALLOW_NO_AUTH=true setzen"}, status_code=503)
+        return Response(_NO_AUTH_PAGE, status_code=503, media_type="text/html; charset=utf-8")
+    ip, now = _client_ip(request), time.time()
+    recent = [t for t in _fails.get(ip, []) if now - t < _FAIL_WINDOW]
+    if len(recent) >= _FAIL_LIMIT:
+        return Response("Zu viele Fehlversuche – bitte später erneut versuchen.", status_code=429,
+                        headers={"Retry-After": str(_FAIL_WINDOW)})
+    auth = request.headers.get("authorization", "")
+    ok = False
+    if auth.lower().startswith("basic "):
+        try:
+            _, pw = base64.b64decode(auth[6:]).decode().split(":", 1)
+            ok = secrets.compare_digest(pw.encode(), APP_PASSWORD.encode())
+        except Exception:
+            ok = False
+    if not ok:
+        if auth:                                  # erster Aufruf ohne Daten zählt nicht als Fehlversuch
+            recent.append(now)
+        _fails[ip] = recent
+        if len(_fails) > 5000:
+            _fails.clear()
+        return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="HermesVI"'})
+    _fails.pop(ip, None)
     return await call_next(request)
+
+
+# ---------------------------------------------------------------- Sicherheits-Header
+_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; "
+        "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers.setdefault("Content-Security-Policy", _CSP)
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    resp.headers.setdefault("Permissions-Policy", "microphone=(self), camera=(self), geolocation=()")
+    return resp
 
 
 # ---------------------------------------------------------------- Seiten
@@ -208,7 +293,8 @@ async def health():
 @app.get("/api/status")
 async def status():
     out = {"name": AGENT_NAME, "mode": HERMES_MODE, "tts": TTS_BACKEND, "stt": STT_BACKEND,
-           "hermes": False, "audio": False, "model": None}
+           "hermes": False, "audio": False, "model": None, "notify_mode": NOTIFY_MODE,
+           "auth": "password" if APP_PASSWORD else "proxy"}
     t0 = time.perf_counter()
     try:
         r = await client.get(f"{HERMES_URL}/health", timeout=3)
@@ -303,7 +389,7 @@ async def stream_responses(text: str, session: str):
 
 
 async def stream_chat(text: str, session: str):
-    hist = _chat_history.setdefault(session, [])
+    hist = _history(session)
     hist.append({"role": "user", "content": text})
     messages = [{"role": "system", "content": VOICE_HINT}] + hist[-40:]
     body = {"model": "hermes-agent", "messages": messages, "stream": True}
@@ -333,15 +419,20 @@ async def stream_chat(text: str, session: str):
                     answer.append(delta)
                     yield sse({"type": "delta", "text": delta})
     hist.append({"role": "assistant", "content": "".join(answer)})
+    del hist[:-80]
 
 
 @app.post("/api/chat")
 async def chat(request: Request):
     payload = await request.json()
-    text = (payload.get("text") or "").strip()
-    session = (payload.get("session") or "main")[:64]
+    if not isinstance(payload, dict):
+        return JSONResponse({"error": "ungültig"}, status_code=400)
+    text = str(payload.get("text") or "").strip()
+    session = str(payload.get("session") or "main")[:64]
     if not text:
         return JSONResponse({"error": "leer"}, status_code=400)
+    if len(text) > MAX_TEXT:
+        return JSONResponse({"error": f"Nachricht zu lang (max. {MAX_TEXT // 1024} KB)"}, status_code=413)
 
     async def gen():
         yield sse({"type": "start", "id": uuid.uuid4().hex[:8]})
@@ -360,14 +451,16 @@ async def chat(request: Request):
 @app.post("/api/reset")
 async def reset(request: Request):
     payload = await request.json()
-    _chat_history.pop((payload.get("session") or "main")[:64], None)
+    _chat_history.pop(str((payload or {}).get("session") or "main")[:64], None)
     return {"ok": True}
 
 
 # ---------------------------------------------------------------- Sprache
 @app.post("/api/stt")
 async def stt(file: UploadFile = File(...)):
-    audio = await file.read()
+    audio = await file.read(MAX_AUDIO + 1)
+    if len(audio) > MAX_AUDIO:
+        return JSONResponse({"error": "Aufnahme zu lang"}, status_code=413)
     if STT_BACKEND == "elevenlabs":
         try:
             r = await client.post("https://api.elevenlabs.io/v1/speech-to-text",
@@ -407,8 +500,13 @@ async def stt(file: UploadFile = File(...)):
 @app.post("/api/tts")
 async def tts(request: Request):
     payload = await request.json()
-    text = (payload.get("text") or "").strip()[:4000]
-    speed = float(payload.get("speed") or 1.0)
+    text = str(payload.get("text") or "").strip()[:4000]
+    try:
+        speed = max(0.5, min(2.0, float(payload.get("speed") or 1.0)))
+    except (TypeError, ValueError):
+        speed = 1.0
+    if speed != speed:                      # NaN
+        speed = 1.0
     if not text:
         return Response(status_code=204)
 
@@ -524,7 +622,8 @@ async def _start_dashboard():
 @app.post("/api/state")
 async def post_state(request: Request):
     """Alternative Quelle: Brücke auf der Hermes-VM schickt Aufträge + Log."""
-    if not NOTIFY_TOKEN or request.headers.get("authorization", "") != f"Bearer {NOTIFY_TOKEN}":
+    if not NOTIFY_TOKEN or not secrets.compare_digest(request.headers.get("authorization", "").encode(),
+                                                     f"Bearer {NOTIFY_TOKEN}".encode()):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     payload = await request.json()
     if not isinstance(payload, dict):
@@ -541,7 +640,24 @@ async def post_state(request: Request):
 async def notifications(after: int = -1):
     if after < 0:
         return {"seq": _note_seq, "items": []}
-    return {"seq": _note_seq, "items": [n for n in _notes if n["seq"] > after]}
+    return {"seq": _note_seq, "items": [{k: v for k, v in n.items() if k != "claimed"} for n in _notes if n["seq"] > after]}
+
+
+@app.post("/api/notifications/claim")
+async def claim_notification(request: Request):
+    """Jede Meldung geht nur an EIN Gerät weiter – sonst arbeitet der Agent bei mehreren offenen Geräten doppelt."""
+    payload = await request.json()
+    try:
+        seq = int((payload or {}).get("seq"))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "seq fehlt"}, status_code=400)
+    for n in _notes:
+        if n["seq"] == seq:
+            if n.get("claimed"):
+                return {"ok": False}
+            n["claimed"] = True
+            return {"ok": True}
+    return {"ok": False}
 
 
 @app.get("/api/state")
@@ -551,7 +667,7 @@ async def get_state():
 
 @app.get("/api/config")
 async def config():
-    return {"name": AGENT_NAME, "tts": TTS_BACKEND}
+    return {"name": AGENT_NAME, "tts": TTS_BACKEND, "notify_mode": NOTIFY_MODE}
 
 
 if __name__ == "__main__":

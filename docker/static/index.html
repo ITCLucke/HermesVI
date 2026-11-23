@@ -316,7 +316,7 @@ const S = {
 const session = store.get("session", null) || (() => { const s = "s"+Math.random().toString(36).slice(2,10); store.set("session", s); return s; })();
 
 /* ---------------------------------------------------------- Zustand */
-let NAME = "Hermes", DEMO = false, TTS = "hermes", DESKTOP = false;
+let NAME = "Hermes", DEMO = false, TTS = "hermes", DESKTOP = false, NOTIFY_MODE = "agent";
 let state = "idle";            // idle | listening | hearing | thinking | speaking | muted | error
 let micOn = true;
 let ctx = null, micStream = null, inAnalyser = null, outAnalyser = null, proc = null;
@@ -418,6 +418,8 @@ function addEvent(name, preview, done){
   if(!document.querySelector('.tab[data-tab="act"]').classList.contains("on")){ actCount++; $("actBadge").textContent=actCount; $("actBadge").hidden=false; }
 }
 
+function esc(t){ return String(t??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
 /* ---------------------------------------------------------- Status */
 async function loadStatus(){
   try{
@@ -425,7 +427,7 @@ async function loadStatus(){
     if(!r.ok) throw 0;
     const s = await r.json();
     if(typeof s!=="object" || !("hermes" in s)) throw 0;
-    NAME = s.name || NAME; TTS = s.tts || TTS; DESKTOP = !!s.desktop;
+    NAME = s.name || NAME; TTS = s.tts || TTS; DESKTOP = !!s.desktop; NOTIFY_MODE = s.notify_mode === "announce" ? "announce" : "agent";
     $("brandName").textContent=NAME; document.title=NAME+" · HermesVI"; document.querySelectorAll(".nm").forEach(e=>e.textContent=NAME);
     $("dot").className = s.hermes ? "on" : "";
     $("sysHermes").innerHTML = s.hermes ? '<span class="ok">verbunden</span>' : '<span class="bad">nicht erreichbar</span>';
@@ -433,7 +435,7 @@ async function loadStatus(){
     $("sysLat").textContent = s.latency_ms!=null ? s.latency_ms+" ms" : "–";
     const sttTxt = s.stt==="local" ? "Whisper "+(s.whisper||"") : (s.stt==="elevenlabs" ? "ElevenLabs" : "Hermes");
     $("sysBoard").innerHTML = s.lagebild==="aus" ? '<span class="warn">nicht eingerichtet</span>' : (s.lagebild_error ? '<span class="bad">Fehler</span>' : '<span class="ok">'+(s.lagebild==="dashboard"?"Dashboard":"Brücke")+'</span>');
-    $("sysAudio").innerHTML = (s.audio ? '<span class="ok">bereit</span>' : '<span class="warn">nicht bereit</span>') + ` · STT: ${sttTxt} · TTS: ${TTS}`;
+    $("sysAudio").innerHTML = (s.audio ? '<span class="ok">bereit</span>' : '<span class="warn">nicht bereit</span>') + ` · STT: ${esc(sttTxt)} · TTS: ${esc(TTS)}`;
     $("sysMode").textContent = s.mode;
     return true;
   }catch{
@@ -925,7 +927,7 @@ requestAnimationFrame(frame);
 /* ---------------------------------------------------------- Lagebild: Aufträge + Hermes-Log */
 const ORDER = ["running","review","blocked","ready","todo","scheduled","triage"];
 const ST_DE = { running:"Läuft", review:"Prüfung", blocked:"Blockiert", ready:"Bereit", todo:"Offen", scheduled:"Geplant", triage:"Eingang" };
-const esc = (t)=>String(t??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
 function toMs(v){ if(v==null||v===""||v==="None") return null; const n=Number(v); if(!isNaN(n)) return n>1e12?n:n*1000; const d=Date.parse(v); return isNaN(d)?null:d; }
 function since(v){ const t=toMs(v); if(!t) return ""; let s=Math.max(0,(Date.now()-t)/1000|0);
   if(s<60) return s+" s"; if(s<3600) return (s/60|0)+" min"; if(s<86400) return (s/3600|0)+" h"; return (s/86400|0)+" d"; }
@@ -982,16 +984,38 @@ async function pollNotes(){
   }catch{}
   deliverNotes();
 }
-function deliverNotes(){
-  if(!noteQueue.length || busy || V.inSpeech) return;
+let delivering = false;
+async function claimNote(seq){
+  try{
+    const r = await fetch("/api/notifications/claim", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({seq})});
+    return r.ok && (await r.json()).ok === true;
+  }catch{ return false; }
+}
+async function deliverNotes(){
+  if(!noteQueue.length || busy || V.inSpeech || delivering) return;
   if(document.hidden && !DESKTOP) return;          // Handy/Browser im Hintergrund: warten, bis die App wieder offen ist
   const n = noteQueue.shift();
   const st = STATUS_TXT[n.status] || n.status || "fertig";
-  addEvent("📋 "+(n.assignee ? n.assignee+": " : "")+n.title, st, n.status==="done");
+  if(!n._mine) addEvent("📋 "+(n.assignee ? n.assignee+": " : "")+n.title, st, n.status==="done");
+  // Jede Meldung bearbeitet nur EIN Gerät – sonst arbeitet der Agent bei mehreren offenen Geräten doppelt
+  delivering = true;
+  const mine = n._mine || await claimNote(n.seq);
+  delivering = false;
+  if(!mine){ setTimeout(deliverNotes, 300); return; }
+  if(busy || V.inSpeech){ n._mine = true; noteQueue.unshift(n); return; }   // inzwischen redest du – später nachholen
   if(DESKTOP && (document.hidden || !document.hasFocus()) && "Notification" in window){
     try{ new Notification(`${NAME}: Auftrag ${st}`, { body: n.title + (n.assignee ? " ("+n.assignee+")" : ""), silent: true }); }catch{}
   }
   initOutput().catch(()=>{});
+  if(NOTIFY_MODE === "announce"){                  // nur ansagen – das Ergebnis erreicht den Agenten nicht
+    const say = `Auftrag „${n.title}“${n.assignee ? " von "+n.assignee : ""} ist ${st}.`;
+    addChip(`📋 Kanban: ${n.title} – ${st}`);
+    const a = addMsg(NAME, say, "ai");
+    busy = true; setState("speaking");
+    const sp = new Speaker(gen, true, ()=>a.spoken()); sp.say(say); await sp.finish();
+    busy = false; idleState(); setTimeout(deliverNotes, 800);
+    return;
+  }
   // Ergebnis stammt aus fremden Quellen (Mails, Webseiten …) → strikt als Daten markieren
   const clean = (t, n) => String(t||"").replace(/<<<|>>>/g,"").replace(/\[\/?(System|Nutzer|Anweisung)[^\]]*\]/gi,"").slice(0,n);
   const prompt = `[Automatische Kanban-Meldung – nicht vom Nutzer] Die Aufgabe „${clean(n.title,200)}“ (${clean(n.id,40)}${n.assignee?", bearbeitet von "+clean(n.assignee,40):""}) ist ${st}.`

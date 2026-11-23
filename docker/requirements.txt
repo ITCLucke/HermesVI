@@ -2,7 +2,7 @@
 fastapi==0.165.0
 uvicorn==0.54.0
 httpx==0.28.1
-python-multipart==0.0.32
+python-multipart==0.0.34
 # Optional, nur bei Bedarf über die Build-Variable EXTRA_PIP:
 #   faster-whisper  (STT_BACKEND=local)
 #   edge-tts        (TTS_BACKEND=edge)
