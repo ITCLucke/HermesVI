@@ -452,6 +452,7 @@ async function loadStatus(){
 
 /* ---------------------------------------------------------- Audio-Setup */
 async function initOutput(){
+  if(ctx && ctx.state==="closed"){ ctx=null; outAnalyser=null; }
   ctx = ctx || new (window.AudioContext||window.webkitAudioContext)();
   if (ctx.state==="suspended") { try{ await ctx.resume(); }catch{} }
   if(!outAnalyser){ outAnalyser = ctx.createAnalyser(); outAnalyser.fftSize=256; outAnalyser.smoothingTimeConstant=.7; outAnalyser.connect(ctx.destination); }
@@ -469,6 +470,7 @@ async function startAudio(){
     $("textin").classList.add("show"); setMic(false);
     return false;
   }
+  micStream.getAudioTracks().forEach(t=>{ t.onended=()=>{ if(micStream && !micAlive()) showResume(); }; });
   const src = ctx.createMediaStreamSource(micStream);
   inAnalyser = ctx.createAnalyser(); inAnalyser.fftSize=256; inAnalyser.smoothingTimeConstant=.6;
   src.connect(inAnalyser);
@@ -712,7 +714,44 @@ async function fetchSpeech(text, g){
 async function ensureAudio(){
   if(ctx && ctx.state!=="running"){ try{ await ctx.resume(); }catch{} }
 }
-document.addEventListener("visibilitychange",()=>{ if(!document.hidden) ensureAudio(); });
+/* Handy (v. a. iOS-Web-App): Im Hintergrund beendet das System Mikrofon und Audio, ohne dass die Seite es merkt.
+   Deshalb beim Verlassen alles sauber freigeben (orangener Mikro-Punkt geht aus) und bei der Rückkehr
+   per Tippen neu starten – iOS erlaubt Audio nur nach einer Berührung. */
+const MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+let needResume=false;
+function releaseMic(){
+  try{ if(proc){ proc.onaudioprocess=null; proc.disconnect(); } }catch{}
+  proc=null; inAnalyser=null;
+  if(micStream){ try{ micStream.getTracks().forEach(t=>{ t.onended=null; t.stop(); }); }catch{} micStream=null; }
+  V.inSpeech=false; V.chunks=[]; V.pre=[]; V.above=0;
+}
+function micDead(){ return micStream && !micStream.getAudioTracks().some(t=>t.readyState==="live" && !t.muted); }
+function showResume(){
+  if(document.hidden){ needResume=true; return; }
+  needResume=false;
+  releaseMic();
+  $("start").firstElementChild.textContent="Tippen, um weiterzumachen";
+  $("start").classList.remove("hide");
+  if(!busy) idleState();
+}
+function restartAudio(){   // läuft innerhalb der Berührung: Audio-Kontext sofort (synchron) neu anlegen, falls er hängt
+  if(ctx && ctx.state!=="running"){
+    try{ currentSources.forEach(s=>{ try{s.stop();}catch{} }); currentSources=[]; }catch{}
+    try{ ctx.close(); }catch{}
+    ctx=null; outAnalyser=null;
+  }
+  releaseMic();
+  boot();
+}
+function onVisible(){
+  if(needResume || micDead()) showResume();
+  else ensureAudio();
+}
+document.addEventListener("visibilitychange",()=>{
+  if(!document.hidden) return onVisible();
+  if(MOBILE && !DESKTOP && micStream){ releaseMic(); needResume=true; try{ ctx && ctx.suspend(); }catch{} if(!busy) idleState(); }
+});
+addEventListener("pageshow",(e)=>{ if(e.persisted) onVisible(); });
 
 class Speaker{
   constructor(g, on=true, onSpoken=null){ this.g=g; this.on=on; this.onSpoken=onSpoken; this.playing=Promise.resolve(); }
@@ -787,8 +826,7 @@ function micAlive(){ return micStream && micStream.getAudioTracks().some(t=>t.re
 function toggleMic(e){
   if(e && e.currentTarget) e.currentTarget.blur();          // Fokus weg, sonst löst die Leertaste den Knopf doppelt aus
   if(!micAlive()){                                          // noch nie gestartet oder Gerät weg (Headset gewechselt, Windows-Datenschutz) → neu holen
-    if(micStream){ try{ micStream.getTracks().forEach(t=>t.stop()); }catch{} micStream=null; try{ proc && proc.disconnect(); }catch{} }
-    boot(); return;
+    restartAudio(); return;
   }
   setMic(!micOn);
 }
@@ -818,7 +856,7 @@ async function boot(){
   const ok = await startAudio();
   if(ok){ setMic(true); idleState(); ui.caption.textContent = DEMO ? "Demo-Modus – sag etwas oder tipp unten auf die Tastatur." : `Sag einfach was – ${NAME} hört zu.`; }
 }
-$("start").onclick=boot;
+$("start").onclick=restartAudio;
 
 /* ---------------------------------------------------------- Visualisierung */
 const cv=$("orb"), g=cv.getContext("2d");

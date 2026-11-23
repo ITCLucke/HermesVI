@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.2.2 – 2026-11-23
+
+Fehlerbehebung für die Web-App auf dem Handy (vor allem iPhone/iPad als Homescreen-App).
+
+- Behoben: Nach einem App-Wechsel oder dem Wegwischen blieb das Mikrofon belegt (orangener Punkt), und bei der Rückkehr reagierte der Agent nicht mehr – nur Schließen und neu Öffnen half
+- Neu: Geht die App auf dem Handy in den Hintergrund, gibt sie Mikrofon und Audio sauber frei. Bei der Rückkehr erscheint „Tippen, um weiterzumachen“ – ein Tippen genügt (iOS erlaubt Audio nur nach einer Berührung)
+- Neu: Fällt das Mikrofon unterwegs aus (Anruf, Siri, Headset-Wechsel), erkennt die App das und bietet ebenfalls den Neustart per Tippen an
+- Unverändert: Desktop-App und Desktop-Browser hören im Hintergrund weiter zu
+- Hinweis: iOS merkt sich die Mikrofon-Freigabe für Homescreen-Apps teilweise nicht dauerhaft und fragt nach einem Neustart der App eventuell erneut – das lässt sich von der App aus nicht ändern
+
 ## v1.2.1 – 2026-11-23
 
 Sicherheits-Update nach einer vollständigen Code-Prüfung.
