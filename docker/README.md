@@ -126,6 +126,18 @@ Die App bleibt dabei nur im NetBird-Netz erreichbar – nichts hängt öffentlic
 
 Seite im Browser öffnen → „Zum Home-Bildschirm“. Startet dann wie eine App im Vollbild.
 
+## Fotos und Dateien anhängen
+
+Büroklammer neben dem Mikrofon (Handy) bzw. links im Chat (Desktop) – oder einfach einfügen (Strg+V) oder ins Fenster ziehen. Der Anhang wartet unten, bis du etwas sagst oder schreibst, und geht dann mit dieser Nachricht an den Agenten. Ohne Text genügt Senden.
+
+| Art | Was passiert |
+|---|---|
+| Fotos, Screenshots (JPEG, PNG, WebP, GIF, iPhone-HEIC) | im Browser auf max. 1600 px verkleinert und als Bild an Hermes – der Agent sieht es direkt (bei Modellen ohne Bildverständnis beschreibt es Hermes' Vision-Hilfsmodell) |
+| PDF | Text wird ausgelesen (bis `ATTACH_MAX_CHARS`). Eingescannte PDFs ohne Text: als Foto schicken |
+| Word (.docx), Text, Markdown, CSV, JSON, Code | Text wird ausgelesen |
+
+Max. 5 Anhänge pro Nachricht, je 8 MB. Hermes' API nimmt andere Dateien als Bilder nicht an – deshalb liest HermesVI den Text selbst aus und gibt ihn klar als Daten gekennzeichnet weiter. Die Dateien selbst landen nicht auf der Hermes-VM.
+
 ## Einstellungen im Panel (Tab „System“)
 
 | Regler | Wirkung |

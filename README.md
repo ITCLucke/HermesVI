@@ -21,6 +21,7 @@ Beide können denselben Hermes-API-Key (`API_SERVER_KEY`) parallel nutzen.
 - Desktop ab 1300 px: links Aufträge (2/3) und Hermes-Log (1/3), Mitte animierter Orb und Chat, rechts Aktivität und System
 - Handy: Orb im Vollbild, Panel mit Verlauf, Aktivität, Aufträgen, Log und System; als Web-App auf den Home-Bildschirm legbar
 - Chat: tippen oder sprechen, Sprachausgabe an/aus
+- Anhänge: Fotos, Screenshots und Dokumente mitschicken – per Büroklammer, Einfügen (Strg+V) oder Hineinziehen. Bilder sieht der Agent direkt, aus Word (.docx), Text- und Code-Dateien liest HermesVI den Text aus; PDF nur in der Docker-Variante
 - Kanban-Meldungen: Der Agent meldet sich von selbst, wenn ein Auftrag erledigt, fehlgeschlagen oder blockiert ist
 - Aufträge, Log und Meldungen kommen direkt aus dem Hermes-Dashboard (`HERMES_DASHBOARD_SESSION_TOKEN`)
 - Anzeigename des Agenten frei wählbar (`AGENT_NAME` bzw. in den Einstellungen)
@@ -58,6 +59,7 @@ Ein Hermes-Agent hat in der Regel vollen Terminal-Zugriff auf seinen Rechner. **
 - **Dashboard-Token** ist ein Generalschlüssel fürs Hermes-Dashboard. Nie teilen, bei Verdacht neu erzeugen.
 - **Fernzugriff** nur über VPN (z. B. NetBird, WireGuard, Tailscale), nie offen ins Internet.
 - **ElevenLabs:** Key nur mit den zwei nötigen Rechten und mit Credit-Limit.
+- **Anhänge:** Text aus Dokumenten wird als fremde Daten gekennzeichnet – trotzdem können präparierte Dateien (z. B. PDFs aus Mails) versuchen, den Agenten zu steuern. Nur Dateien schicken, denen du vertraust.
 - `chmod 600 hermesvi.env`
 
 Eingebaute Schutzmaßnahmen:

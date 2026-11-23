@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.3.0 – 2026-11-23
+
+Fotos und Dateien an den Agenten schicken.
+
+- Neu: Anhängen per Büroklammer (Handy: neben dem Mikrofon, Desktop: links im Chat), per Einfügen (Strg+V) oder Hineinziehen
+- Neu: Fotos und Screenshots gehen als Bild an Hermes – der Agent sieht sie direkt. Große Handy-Fotos werden vorher im Browser verkleinert (max. 1600 px), iPhone-Fotos (HEIC) dabei zu JPEG
+- Neu: Aus Word (.docx), Text-, Markdown-, CSV-, JSON- und Code-Dateien wird der Text ausgelesen und klar als Daten gekennzeichnet mitgeschickt
+- Neu (Docker): PDFs – der Text wird ausgelesen. Eingescannte PDFs ohne Text bitte als Foto schicken
+- Anhänge warten unten, bis du etwas sagst oder schreibst – auch per Sprache: Foto anhängen, „Was ist das?“ sagen
+- Max. 5 Anhänge pro Nachricht, je 8 MB; Vorschau mit Entfernen-Knopf; Anhänge erscheinen im Chat und im Verlauf
+- Docker: neue Einstellung `ATTACH_MAX_CHARS` (Standard 40000 Zeichen Text pro Dokument), neue Abhängigkeit pypdf 7.1.1
+- Desktop-App: Bilder, Word und Text ja, PDF noch nicht
+
 ## v1.2.3 – 2026-11-23
 
 Die Docker-Variante gibt es jetzt fertig zum Herunterladen.

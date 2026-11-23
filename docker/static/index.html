@@ -54,6 +54,25 @@
   .textin input{flex:1;background:rgba(10,17,27,.9);border:1px solid var(--line2);border-radius:999px;padding:14px 20px;color:var(--txt);font-size:16px;outline:none}
   .textin input:focus{border-color:var(--cyan)}
 
+  /* Anhänge */
+  .atttray{display:flex;gap:8px;flex-wrap:wrap;z-index:5}
+  .atttray:empty{display:none}
+  .atttray.mob{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(108px + env(safe-area-inset-bottom));width:min(560px,calc(100% - 32px));justify-content:center}
+  .textin.show ~ .atttray.mob{bottom:calc(166px + env(safe-area-inset-bottom))}
+  .stage.hasatt .hud{bottom:calc(166px + env(safe-area-inset-bottom))}
+  .att{display:flex;align-items:center;gap:8px;padding:4px 4px 4px 4px;border-radius:12px;border:1px solid var(--line2);background:rgba(10,17,27,.92);font-size:12.5px;color:var(--txt);max-width:230px}
+  .att img,.att i{width:36px;height:36px;border-radius:8px;flex:none}
+  .att img{object-fit:cover}
+  .att i{display:grid;place-items:center;background:rgba(62,224,255,.1);font:600 9px var(--mono);letter-spacing:.06em;color:var(--cyan);font-style:normal;text-transform:uppercase}
+  .att span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .att button{flex:none;width:28px;height:28px;border:0;border-radius:50%;background:none;color:var(--dim);font-size:18px;line-height:1;cursor:pointer}
+  .att button:hover{color:var(--red)}
+  .bubatt{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 6px}
+  .chatlist .bubatt{align-self:flex-end;justify-content:flex-end;max-width:80%;margin:0 0 -8px}
+  .bubatt img{max-width:160px;max-height:120px;border-radius:10px;border:1px solid var(--line2);display:block}
+  .bubatt span{padding:5px 10px;border-radius:999px;border:1px solid var(--line2);font-family:var(--mono);font-size:11.5px;color:var(--cyan);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .app.dragging .stage::after{content:"Datei hier ablegen";position:absolute;inset:16px;display:grid;place-items:center;border:2px dashed var(--cyan);border-radius:20px;background:rgba(5,8,13,.75);color:var(--cyan);font-family:var(--mono);letter-spacing:.2em;text-transform:uppercase;font-size:13px;z-index:20;pointer-events:none}
+
   /* Start-Overlay */
   .start{position:absolute;inset:0;display:grid;place-items:center;z-index:6;background:radial-gradient(circle at 50% 45%,rgba(5,8,13,.0),rgba(5,8,13,.55));cursor:pointer}
   .start.hide{display:none}
@@ -167,7 +186,9 @@
     .orbzone{position:relative;height:320px;flex:none}
     .hud{position:absolute;top:290px;bottom:auto}
     .caption{display:none}
-    .controls,.textin{display:none!important}
+    .controls,.textin,.atttray.mob{display:none!important}
+    .stage.hasatt .hud{bottom:auto}
+    .atttray.desk{padding:10px 10px 4px;border:1px solid var(--line2);border-bottom:0;background:var(--bg2)}
     .chat{display:flex;flex-direction:column;position:relative;z-index:4;flex:1;min-height:0;width:100%;max-width:780px;margin:22px auto 0;padding:0 28px 22px;box-sizing:border-box}
     .start{display:none}
     .panel .tabs{display:none}
@@ -224,10 +245,15 @@
     <form class="textin" id="textin" autocomplete="off">
       <input id="textfield" placeholder="Schreib etwas …" enterkeyhint="send">
     </form>
+    <div class="atttray mob" aria-label="Anhänge"></div>
+    <input type="file" id="fileIn" multiple hidden>
 
     <nav class="controls">
       <button class="btn" id="kbBtn" title="Tippen statt sprechen">
         <svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
+      </button>
+      <button class="btn" id="attBtn" title="Foto oder Datei anhängen">
+        <svg viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l9.2-9.2a3.7 3.7 0 0 1 5.2 5.2l-9.2 9.2a1.8 1.8 0 0 1-2.6-2.6l8.5-8.5"/></svg>
       </button>
       <button class="btn main" id="micBtn" title="Mikrofon an/aus (Leertaste)">
         <svg viewBox="0 0 24 24" id="micIcon"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
@@ -242,7 +268,9 @@
 
     <section class="chat" id="chat" aria-label="Chat">
       <div class="chatlist" id="chatList" aria-live="polite"><p class="empty" id="chatEmpty">Schreib unten etwas – oder klick auf das Mikrofon und sprich einfach los.</p></div>
+      <div class="atttray desk" aria-label="Anhänge"></div>
       <form class="chatbar" id="chatForm" autocomplete="off">
+        <button type="button" class="cbtn" id="chatAtt" aria-label="Datei anhängen" title="Datei oder Bild anhängen (auch per Einfügen oder Hineinziehen)"><svg viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l9.2-9.2a3.7 3.7 0 0 1 5.2 5.2l-9.2 9.2a1.8 1.8 0 0 1-2.6-2.6l8.5-8.5"/></svg></button>
         <label class="sr" for="chatInput">Nachricht</label>
         <input id="chatInput" placeholder="Schreib … oder sprich einfach" enterkeyhint="send">
         <button type="button" class="cbtn read" id="readBtn" aria-pressed="true" title="Sprachausgabe an/aus – aus: Antworten nur schriftlich">
@@ -380,7 +408,15 @@ const logPane=$("pane-log"), actPane=$("pane-act");
 const chatList=$("chatList");
 const SPK='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>';
 function chatScroll(){ chatList.scrollTop=chatList.scrollHeight; }
-function addMsg(who, text, cls){
+function attView(atts){
+  const d=document.createElement("div"); d.className="bubatt";
+  for(const a of atts){
+    if(a.thumb){ const im=document.createElement("img"); im.src=a.thumb; im.alt=a.name; d.appendChild(im); }
+    else { const sp=document.createElement("span"); sp.textContent="📎 "+a.name; d.appendChild(sp); }
+  }
+  return d;
+}
+function addMsg(who, text, cls, atts){
   $("logEmpty")?.remove(); $("chatEmpty")?.remove();
   // Verlauf (Handy-Panel)
   const m=document.createElement("div"); m.className="msg "+cls;
@@ -397,7 +433,9 @@ function addMsg(who, text, cls){
   }else{
     bubble=document.createElement("div"); bubble.className="bub "+cls; chatList.appendChild(bubble);
   }
-  bubble.textContent=text; chatScroll();
+  bubble.textContent=text;
+  if(atts && atts.length){ m.insertBefore(attView(atts), m.querySelector(".txt")); chatList.insertBefore(attView(atts), bubble); }
+  chatScroll();
   const txt=m.querySelector(".txt");
   return { set(t){ txt.textContent=t; bubble.textContent=t; logPane.scrollTop=logPane.scrollHeight; chatScroll(); },
            spoken(){ wrap && wrap.classList.add("spoken"); } };
@@ -437,6 +475,7 @@ async function loadStatus(){
     $("sysBoard").innerHTML = s.lagebild==="aus" ? '<span class="warn">nicht eingerichtet</span>' : (s.lagebild_error ? '<span class="bad">Fehler</span>' : '<span class="ok">'+(s.lagebild==="dashboard"?"Dashboard":"Brücke")+'</span>');
     $("sysAudio").innerHTML = (s.audio ? '<span class="ok">bereit</span>' : '<span class="warn">nicht bereit</span>') + ` · STT: ${esc(sttTxt)} · TTS: ${esc(TTS)}`;
     $("sysMode").textContent = s.mode;
+    if(s.attach){ ATT = s.attach; $("fileIn").accept = attAccept(); }
     return true;
   }catch{
     DEMO = true;
@@ -582,10 +621,11 @@ async function handleUtterance(wav){
 async function converse(text, viaVoice, shown){
   busy=true; ensureAudio();
   const my = ++gen;
+  const atts = shown ? [] : takeAtt();            // Anhänge gehen mit der nächsten eigenen Nachricht mit (getippt oder gesprochen)
   const label = shown || text;
-  ui.caption.innerHTML=""; const you=document.createElement("span"); you.className= shown ? "you note" : "you"; you.textContent=label; ui.caption.appendChild(you);
+  ui.caption.innerHTML=""; const you=document.createElement("span"); you.className= shown ? "you note" : "you"; you.textContent=label + (atts.length ? `  📎 ${atts.length}` : ""); ui.caption.appendChild(you);
   const aiCap=document.createElement("span"); aiCap.className="ai"; ui.caption.appendChild(aiCap);
-  if(shown) addChip(label); else addMsg("Du", text, "me");
+  if(shown) addChip(label); else addMsg("Du", text, "me", atts);
   setState("thinking");
   let aiTxt = null;
   const ai = ()=> (aiTxt ||= addMsg(NAME, "", "ai"));
@@ -612,7 +652,7 @@ async function converse(text, viaVoice, shown){
 
   try{
     if(DEMO) await demoChat(text, onDelta, onTool);
-    else await streamChat(text, onDelta, onTool);
+    else await streamChat(text, onDelta, onTool, atts);
   }catch(err){
     if(err.name!=="AbortError" && my===gen){
       addMsg("Fehler", String(err.message||err), "err");
@@ -635,7 +675,9 @@ function drainPending(){
   setTimeout(deliverNotes, 800);
 }
 async function sendText(t){
-  t=(t||"").trim(); if(!t) return;
+  t=(t||"").trim();
+  if(!t && pendingAtt.length) t="Schau dir bitte den Anhang an.";
+  if(!t) return;
   await initOutput();
   if(state==="speaking") interrupt();
   if(busy) pendingTexts.push(t); else converse(t, false);
@@ -659,11 +701,12 @@ function toolLabel(n){
 }
 const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 
-async function streamChat(text, onDelta, onTool){
+async function streamChat(text, onDelta, onTool, atts){
   chatAbort = new AbortController();
+  const attachments = (atts||[]).map(a=>({name:a.name, type:a.type, data:a.data}));
   const r = await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({text, session}), signal:chatAbort.signal});
-  if(!r.ok || !r.body) throw new Error("Server antwortet mit "+r.status);
+    body:JSON.stringify(attachments.length ? {text, session, attachments} : {text, session}), signal:chatAbort.signal});
+  if(!r.ok || !r.body){ let m=""; try{ m=(await r.json()).error||""; }catch{} throw new Error(m || "Server antwortet mit "+r.status); }
   const reader=r.body.getReader(), dec=new TextDecoder(); let buf="";
   while(true){
     const {value,done}=await reader.read(); if(done) break;
@@ -742,12 +785,13 @@ function restartAudio(){   // läuft innerhalb der Berührung: Audio-Kontext sof
   boot();
 }
 function onVisible(){
+  picking=false;
   if(needResume || micDead()) showResume();
   else ensureAudio();
 }
 document.addEventListener("visibilitychange",()=>{
   if(!document.hidden) return onVisible();
-  if(MOBILE && !DESKTOP && micStream){ releaseMic(); needResume=true; try{ ctx && ctx.suspend(); }catch{} if(!busy) idleState(); }
+  if(MOBILE && !DESKTOP && micStream && !picking){ releaseMic(); needResume=true; try{ ctx && ctx.suspend(); }catch{} if(!busy) idleState(); }
 });
 addEventListener("pageshow",(e)=>{ if(e.persisted) onVisible(); });
 
@@ -810,6 +854,93 @@ async function demoChat(text, onDelta, onTool){
   const line=demoLines[demoI++%demoLines.length];
   for(const w of line.split(/(?<=\s)/)){ onDelta(w); await sleep(35); }
 }
+
+/* ---------------------------------------------------------- Anhänge */
+// Fotos werden im Browser verkleinert (max. 1600 px, JPEG) – schnell übers Handy-Netz, iPhone-Fotos (HEIC) werden dabei zu JPEG.
+let ATT = { pdf:false, max_files:5, max_mb:8 };
+const TEXT_EXT = "txt md csv tsv json yaml yml xml html htm log ini conf cfg toml py js ts sh sql css java c cpp h go rs php rb ps1 bat".split(" ");
+const MAX_ATT_TOTAL = 11*1024*1024;              // Base64-Zeichen pro Nachricht (Server-Limit 12 MB)
+let pendingAtt = [], picking = false;
+const extOf = (n)=>{ const m=/\.([^./]+)$/.exec(n||""); return m ? m[1].toLowerCase() : ""; };
+function attAccept(){ return "image/*,.heic,.heif,.docx,"+(ATT.pdf?".pdf,":"")+TEXT_EXT.map(e=>"."+e).join(","); }
+function attKind(f){
+  const e=extOf(f.name);
+  if(/^image\//.test(f.type) || /^(heic|heif|jpe?g|png|webp|gif)$/.test(e)) return "image";
+  if(e==="pdf" || f.type==="application/pdf") return ATT.pdf ? "pdf" : null;
+  if(e==="docx") return "docx";
+  if(TEXT_EXT.includes(e) || /^text\//.test(f.type)) return "text";
+  return null;
+}
+function loadImg(file){
+  return new Promise((res,rej)=>{
+    const u=URL.createObjectURL(file), im=new Image();
+    im.onload=()=>{ URL.revokeObjectURL(u); res(im); };
+    im.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error("Bild lässt sich nicht öffnen")); };
+    im.src=u;
+  });
+}
+async function shrinkImage(file){
+  const im=await loadImg(file), MAX=1600;
+  const k=Math.min(1, MAX/Math.max(im.naturalWidth, im.naturalHeight));
+  const c=document.createElement("canvas"); c.width=Math.max(1,Math.round(im.naturalWidth*k)); c.height=Math.max(1,Math.round(im.naturalHeight*k));
+  const x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0,c.width,c.height);
+  const url=c.toDataURL("image/jpeg",0.85);
+  return { type:"image/jpeg", data:url.slice(url.indexOf(",")+1), thumb:url };
+}
+function fileB64(file){
+  return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>{ const s=String(r.result); res(s.slice(s.indexOf(",")+1)); }; r.onerror=()=>rej(r.error||new Error("Datei lässt sich nicht lesen")); r.readAsDataURL(file); });
+}
+let attNotes=[];
+function attNote(msg){ attNotes.push(msg); addEvent("Anhang abgelehnt", msg, false); }
+async function addFiles(list){
+  attNotes=[];
+  for(const f of Array.from(list||[])){
+    const name=f.name||"Bild";
+    if(pendingAtt.length>=ATT.max_files){ attNote(`Höchstens ${ATT.max_files} Anhänge auf einmal.`); break; }
+    const kind=attKind(f);
+    if(!kind){ attNote(`„${name}“: Dateityp wird nicht unterstützt`+(extOf(name)==="pdf" ? " (PDF nur in der Docker-/Web-Variante)" : "")+"."); continue; }
+    if(f.size > (kind==="image" ? 40 : ATT.max_mb)*1024*1024){ attNote(`„${name}“ ist zu groß (max. ${kind==="image"?40:ATT.max_mb} MB).`); continue; }
+    try{
+      const a = kind==="image" ? await shrinkImage(f) : { type:f.type||"application/octet-stream", data: await fileB64(f) };
+      if(pendingAtt.reduce((s,x)=>s+x.data.length,0) + a.data.length > MAX_ATT_TOTAL){ attNote(`„${name}“ passt nicht mehr dazu – zusammen zu groß.`); continue; }
+      pendingAtt.push({ name: kind==="image" && !/\.jpe?g$/i.test(name) ? name.replace(/\.[^.]*$/,"")+".jpg" : name, kind, ...a });
+    }catch(err){ attNote(`„${name}“: ${err.message||err}`); }
+  }
+  renderAtt();
+  if(attNotes.length) ui.caption.textContent="⚠ "+attNotes.join(" · ");   // Ablehnung sichtbar lassen
+}
+function takeAtt(){ const a=pendingAtt.splice(0); renderAtt(); return a; }
+function renderAtt(){
+  document.querySelectorAll(".atttray").forEach(tray=>{
+    tray.replaceChildren(...pendingAtt.map((a,i)=>{
+      const el=document.createElement("div"); el.className="att";
+      if(a.thumb){ const im=document.createElement("img"); im.src=a.thumb; im.alt=""; el.appendChild(im); }
+      else { const ic=document.createElement("i"); ic.textContent=extOf(a.name).slice(0,4)||"txt"; el.appendChild(ic); }
+      const sp=document.createElement("span"); sp.textContent=a.name; sp.title=a.name; el.appendChild(sp);
+      const x=document.createElement("button"); x.type="button"; x.textContent="×"; x.title="Entfernen"; x.setAttribute("aria-label", a.name+" entfernen");
+      x.onclick=()=>{ pendingAtt.splice(i,1); renderAtt(); };
+      el.appendChild(x); return el;
+    }));
+  });
+  $("stage").classList.toggle("hasatt", pendingAtt.length>0);
+  if(pendingAtt.length && !busy){ const n=pendingAtt.length; ui.caption.textContent=`📎 ${n} ${n===1?"Anhang":"Anhänge"} bereit – sag oder schreib etwas dazu.`; }
+}
+function pickFiles(e){ if(e && e.currentTarget) e.currentTarget.blur(); picking=true; $("fileIn").value=""; $("fileIn").click(); }
+$("fileIn").accept = attAccept();
+$("fileIn").onchange = ()=>{ picking=false; addFiles($("fileIn").files); };
+$("fileIn").addEventListener("cancel", ()=>{ picking=false; });
+$("attBtn").onclick = pickFiles;
+$("chatAtt").onclick = pickFiles;
+document.addEventListener("paste",(e)=>{
+  const files=[...(e.clipboardData?.files||[])];
+  if(files.length){ e.preventDefault(); addFiles(files); }
+});
+let dragDepth=0;
+const hasFiles=(e)=>[...(e.dataTransfer?.types||[])].includes("Files");
+addEventListener("dragenter",(e)=>{ if(!hasFiles(e)) return; e.preventDefault(); dragDepth++; document.querySelector(".app").classList.add("dragging"); });
+addEventListener("dragover",(e)=>{ if(hasFiles(e)) e.preventDefault(); });
+addEventListener("dragleave",(e)=>{ if(!hasFiles(e)) return; if(--dragDepth<=0){ dragDepth=0; document.querySelector(".app").classList.remove("dragging"); } });
+addEventListener("drop",(e)=>{ if(!hasFiles(e)) return; e.preventDefault(); dragDepth=0; document.querySelector(".app").classList.remove("dragging"); addFiles(e.dataTransfer.files); });
 
 /* ---------------------------------------------------------- Eingaben */
 const MIC_ON='<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>';
