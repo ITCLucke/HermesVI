@@ -72,7 +72,7 @@ Eingebaute Schutzmaßnahmen:
 
 ## Installation
 
-- **Docker:** siehe [`docker/README.md`](docker/README.md). Kurz: `hermesvi.env` aus `hermesvi.env.example` anlegen, `docker compose up -d --build`.
+- **Docker:** siehe [`docker/README.md`](docker/README.md). Kurz: `HermesVI-Docker-vX.zip` aus den [Releases](../../releases) entpacken, `hermesvi.env` aus `hermesvi.env.example` anlegen, `docker compose up -d`. Das fertige Image liegt unter `ghcr.io/itclucke/hermesvi` (amd64 + arm64); Updates mit `docker compose pull && docker compose up -d`.
 - **Windows:** `HermesVI-Windows-vX.zip` aus den [Releases](../../releases) entpacken und `HermesVI.exe` starten. Selbst bauen: `cd desktop && npm ci && npm run pack:win`
 - **Linux:** `HermesVI-Linux-vX-amd64.deb` per Doppelklick installieren (oder `sudo apt install ./HermesVI-Linux-….deb`), danach im Menü „HermesVI“. Alternativ die `.AppImage` ausführbar machen (`chmod +x`) und starten. Selbst bauen: `cd desktop && npm ci && npm run pack:linux`
 
@@ -82,7 +82,7 @@ Beim ersten Start der Desktop-App öffnen sich die Einstellungen: Hermes-URL und
 
 1. Änderungen machen, `CHANGELOG.md` um einen Abschnitt `## vX.Y.Z – Datum` ergänzen.
 2. Neue Versionsnummer in `VERSION` eintragen und nach `main` pushen.
-3. GitHub Actions (`.github/workflows/release.yml`) baut Windows- und Linux-App, legt den Tag `vX.Y.Z` an und veröffentlicht das Release.
+3. GitHub Actions (`.github/workflows/release.yml`) baut Windows- und Linux-App, das Docker-Image (`ghcr.io/itclucke/hermesvi:X.Y.Z`, `:X.Y`, `:latest`) und das Docker-Paket, legt den Tag `vX.Y.Z` an und veröffentlicht das Release.
 
 Pushes ohne neue Versionsnummer lösen kein Release aus. Einmalig nötig:
 Repo → Settings → Actions → General → Workflow permissions → „Read and write permissions“.

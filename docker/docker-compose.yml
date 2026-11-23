@@ -1,7 +1,11 @@
 services:
   hermesvi:
-    build: .
-    image: hermesvi:latest
+    # Fertiges Image aus den GitHub-Releases. Update: docker compose pull && docker compose up -d
+    # Feste Version statt latest möglich, z. B. ghcr.io/itclucke/hermesvi:1.2.3
+    image: ghcr.io/itclucke/hermesvi:latest
+    # Selbst bauen (z. B. für lokale Spracherkennung mit faster-whisper): nächste Zeile einkommentieren,
+    # dann: docker compose build --build-arg EXTRA_PIP="faster-whisper edge-tts" && docker compose up -d
+    # build: .
     container_name: hermesvi
     restart: unless-stopped
     env_file: hermesvi.env

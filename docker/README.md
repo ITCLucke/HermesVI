@@ -47,16 +47,23 @@ sudo ufw deny 8642,8643/tcp
 
 **Auf dem Docker-Host:**
 
+`HermesVI-Docker-vX.Y.Z.zip` aus den [Releases](https://github.com/ITCLucke/HermesVI/releases/latest) laden – darin Compose-Datei und Vorlagen. Das Image selbst (`ghcr.io/itclucke/hermesvi`, für amd64 und arm64) zieht Docker automatisch.
+
 ```sh
-unzip hermesvi.zip && cd hermesvi
+unzip HermesVI-Docker-v*.zip && cd hermesvi
 cp hermesvi.env.example hermesvi.env && nano hermesvi.env      # HERMES_URL/AUDIO_URL = IP der Hermes-VM, Keys eintragen
 nano Caddyfile.docker                                         # NetBird-Name/IP des Docker-Hosts eintragen
-docker compose up -d --build
+docker compose up -d
 docker compose logs -f hermesvi
 curl -s http://127.0.0.1:8800/api/status                      # "hermes": true, "audio": true
 ```
 
-Updates: neue Dateien drüberkopieren, `docker compose up -d --build`. Hermes-VM bleibt unberührt.
+**Updates:** `docker compose pull && docker compose up -d` – fertig, keine Dateien kopieren. Hermes-VM bleibt unberührt.
+Lieber eine feste Version statt `latest`? In `docker-compose.yml` z. B. `ghcr.io/itclucke/hermesvi:1.2.3` eintragen.
+
+**Selbst bauen** (z. B. für lokale Spracherkennung): in `docker-compose.yml` die Zeile `build: .` einkommentieren, dann `docker compose build --build-arg EXTRA_PIP="faster-whisper edge-tts" && docker compose up -d`.
+
+**Umstieg von Version 1.2.2 oder älter** (selbst gebaut): die neue `docker-compose.yml` aus dem Paket übernehmen (deine `hermesvi.env` und `Caddyfile.docker` bleiben), dann `docker compose pull && docker compose up -d`.
 Ports 80/443 schon belegt (z. B. anderer Reverse-Proxy)? Dann den `caddy`-Dienst aus der Compose-Datei streichen und im vorhandenen Proxy auf `hermesvi:8800` bzw. `127.0.0.1:8800` zeigen – wichtig: Response-Buffering aus (Streaming).
 
 ## Installation direkt auf der Hermes-VM (Alternative ohne Docker)
@@ -90,7 +97,7 @@ Gateway neu starten. Das Plugin nutzt die STT/TTS-Anbieter, die in deinem Hermes
 Für deutsche Erkennung die STT-Sprache in Hermes auf Deutsch stellen.
 
 > Optional: lokale Spracherkennung (`STT_BACKEND=local`) bzw. kostenlose Edge-Stimme (`TTS_BACKEND=edge`) brauchen Zusatzpakete im Image:
-> `docker compose build --build-arg EXTRA_PIP="faster-whisper edge-tts"`
+> in `docker-compose.yml` `build: .` einkommentieren, dann `docker compose build --build-arg EXTRA_PIP="faster-whisper edge-tts"`
 > Die Spracherkennung läuft aber immer über das Plugin.
 
 ### 3. App installieren

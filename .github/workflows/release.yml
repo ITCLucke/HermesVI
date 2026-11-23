@@ -1,4 +1,5 @@
-# Baut Windows- und Linux-App und veröffentlicht ein GitHub-Release,
+# Baut Windows- und Linux-App, das Docker-Image (ghcr.io) und das Docker-Paket
+# und veröffentlicht ein GitHub-Release,
 # sobald auf main eine neue Versionsnummer in VERSION steht.
 # Steht die Version schon als Release, passiert nichts.
 # Fremde Actions sind auf feste Commits gepinnt (Kommentar = Version).
@@ -95,8 +96,51 @@ jobs:
             desktop/dist/*.deb
           retention-days: 3
 
+  docker:
+    needs: version
+    if: needs.version.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: img
+        run: |
+          ver='${{ needs.version.outputs.version }}'
+          img="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/hermesvi"
+          {
+            echo "tags<<EOF"
+            echo "$img:$ver"
+            echo "$img:${ver%.*}"
+            echo "$img:latest"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Image bauen und veröffentlichen (amd64 + arm64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: docker
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.img.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=HermesVI
+            org.opencontainers.image.description=HermesVI – Sprach-Web-App für den Hermes-Agenten
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+          provenance: false
+
   release:
-    needs: [version, windows, linux]
+    needs: [version, windows, linux, docker]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -106,6 +150,11 @@ jobs:
         with:
           path: assets
           merge-multiple: true
+      - name: Docker-Paket packen
+        run: |
+          ver='${{ needs.version.outputs.version }}'
+          mkdir -p stage && cp -r docker stage/hermesvi
+          (cd stage && zip -qr9 "../assets/HermesVI-Docker-v$ver.zip" hermesvi)
       - name: Release-Text aus CHANGELOG.md
         run: |
           ver='${{ needs.version.outputs.version }}'
@@ -116,7 +165,7 @@ jobs:
           ### Downloads
           - **Windows:** \`HermesVI-Windows-v$ver.zip\` entpacken → \`HermesVI.exe\`
           - **Linux (Ubuntu/Mint):** \`.deb\` per Doppelklick installieren – oder \`.AppImage\` ausführbar machen und starten
-          - **Handy/Browser:** Docker-Variante im Ordner \`docker/\`
+          - **Handy/Browser (Docker):** Image \`ghcr.io/itclucke/hermesvi:$ver\` (bzw. \`:latest\`) – Compose-Datei und Vorlagen in \`HermesVI-Docker-v$ver.zip\`. Update: \`docker compose pull && docker compose up -d\`
           - **Prüfsummen:** \`SHA256SUMS.txt\` – Windows: \`Get-FileHash <Datei>\`, Linux: \`sha256sum -c SHA256SUMS.txt --ignore-missing\`
           EOF
       - name: Prüfsummen erzeugen

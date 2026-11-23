@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.2.3 – 2026-11-23
+
+Die Docker-Variante gibt es jetzt fertig zum Herunterladen.
+
+- Neu: Fertiges Docker-Image `ghcr.io/itclucke/hermesvi` (amd64 und arm64) bei jedem Release, Tags `1.2.3`, `1.2` und `latest`
+- Neu: Release-Download `HermesVI-Docker-v1.2.3.zip` mit Compose-Datei, Vorlagen (`hermesvi.env.example`, Caddy, nginx) und Quellcode
+- Updates jetzt einfach: `docker compose pull && docker compose up -d` – keine Dateien mehr kopieren, kein eigener Build nötig
+- Selbst bauen bleibt möglich (z. B. für lokale Spracherkennung): in `docker-compose.yml` `build: .` einkommentieren
+- **Umstieg von 1.2.2 oder älter:** neue `docker-compose.yml` aus dem Paket übernehmen (`hermesvi.env` und `Caddyfile.docker` bleiben), dann `docker compose pull && docker compose up -d`
+- Enthält den iPhone-Fix aus 1.2.2 (Mikrofon nach App-Wechsel)
+
 ## v1.2.2 – 2026-11-23
 
 Fehlerbehebung für die Web-App auf dem Handy (vor allem iPhone/iPad als Homescreen-App).
