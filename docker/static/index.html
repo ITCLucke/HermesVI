@@ -55,6 +55,7 @@
   .textin input:focus{border-color:var(--cyan)}
 
   /* Anhänge */
+  #attBtn[hidden],#chatAtt[hidden]{display:none}
   .atttray{display:flex;gap:8px;flex-wrap:wrap;z-index:5}
   .atttray:empty{display:none}
   .atttray.mob{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(108px + env(safe-area-inset-bottom));width:min(560px,calc(100% - 32px));justify-content:center}
@@ -475,7 +476,7 @@ async function loadStatus(){
     $("sysBoard").innerHTML = s.lagebild==="aus" ? '<span class="warn">nicht eingerichtet</span>' : (s.lagebild_error ? '<span class="bad">Fehler</span>' : '<span class="ok">'+(s.lagebild==="dashboard"?"Dashboard":"Brücke")+'</span>');
     $("sysAudio").innerHTML = (s.audio ? '<span class="ok">bereit</span>' : '<span class="warn">nicht bereit</span>') + ` · STT: ${esc(sttTxt)} · TTS: ${esc(TTS)}`;
     $("sysMode").textContent = s.mode;
-    if(s.attach){ ATT = s.attach; $("fileIn").accept = attAccept(); }
+    if(s.attach){ ATT = s.attach; $("fileIn").accept = attAccept(); applyAttEnabled(); }
     return true;
   }catch{
     DEMO = true;
@@ -892,8 +893,14 @@ function fileB64(file){
 }
 let attNotes=[];
 function attNote(msg){ attNotes.push(msg); addEvent("Anhang abgelehnt", msg, false); }
+function applyAttEnabled(){
+  const on = ATT.enabled !== false;
+  $("attBtn").hidden = !on; $("chatAtt").hidden = !on;
+  if(!on && pendingAtt.length){ pendingAtt=[]; renderAtt(); }
+}
 async function addFiles(list){
   attNotes=[];
+  if(ATT.enabled===false){ if(list && list.length){ attNote("Anhänge sind abgeschaltet."); ui.caption.textContent="⚠ Anhänge sind abgeschaltet."; } return; }
   for(const f of Array.from(list||[])){
     const name=f.name||"Bild";
     if(pendingAtt.length>=ATT.max_files){ attNote(`Höchstens ${ATT.max_files} Anhänge auf einmal.`); break; }

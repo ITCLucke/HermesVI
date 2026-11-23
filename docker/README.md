@@ -11,7 +11,7 @@ Handy / PC (Browser)  ──NetBird──►  Caddy (HTTPS)  ──►  HermesVI
 
 Die Hermes-Keys bleiben auf dem Server; der Browser sieht sie nie.
 
-> **Zugangsschutz ist Pflicht:** In `hermesvi.env` entweder `APP_PASSWORD` setzen oder `ALLOW_NO_AUTH=true`, wenn dein Reverse-Proxy schon schützt (z. B. Access List im Nginx Proxy Manager). Ohne eines von beiden zeigt HermesVI nur einen Hinweis und nimmt keine Befehle an.
+> **Zugangsschutz ist Pflicht:** In `hermesvi.env` `APP_PASSWORD` setzen – empfohlen auch dann, wenn dein Reverse-Proxy schon schützt. `ALLOW_NO_AUTH=true` (ohne Passwort) nur, wenn der Proxy zuverlässig schützt (z. B. Access List im Nginx Proxy Manager); dann darf *jedes* Gerät, das der Proxy durchlässt, dem Agenten Befehle geben. Ohne eines von beiden zeigt HermesVI nur einen Hinweis und nimmt keine Befehle an.
 
 ## So fühlt es sich an
 
@@ -53,6 +53,7 @@ sudo ufw deny 8642,8643/tcp
 unzip HermesVI-Docker-v*.zip && cd hermesvi
 cp hermesvi.env.example hermesvi.env && nano hermesvi.env      # HERMES_URL/AUDIO_URL = IP der Hermes-VM, Keys eintragen
 nano Caddyfile.docker                                         # NetBird-Name/IP des Docker-Hosts eintragen
+echo "LISTEN_IP=100.64.0.20" > .env                           # NetBird-IP des Docker-Hosts: Caddy lauscht NUR dort
 docker compose up -d
 docker compose logs -f hermesvi
 curl -s http://127.0.0.1:8800/api/status                      # "hermes": true, "audio": true
@@ -63,8 +64,11 @@ Lieber eine feste Version statt `latest`? In `docker-compose.yml` z. B. `ghcr.io
 
 **Selbst bauen** (z. B. für lokale Spracherkennung): in `docker-compose.yml` die Zeile `build: .` einkommentieren, dann `docker compose build --build-arg EXTRA_PIP="faster-whisper edge-tts" && docker compose up -d`.
 
-**Umstieg von Version 1.2.2 oder älter** (selbst gebaut): die neue `docker-compose.yml` aus dem Paket übernehmen (deine `hermesvi.env` und `Caddyfile.docker` bleiben), dann `docker compose pull && docker compose up -d`.
-Ports 80/443 schon belegt (z. B. anderer Reverse-Proxy)? Dann den `caddy`-Dienst aus der Compose-Datei streichen und im vorhandenen Proxy auf `hermesvi:8800` bzw. `127.0.0.1:8800` zeigen – wichtig: Response-Buffering aus (Streaming).
+**Umstieg von Version 1.3.0 oder älter:** die neue `docker-compose.yml` aus dem Paket übernehmen (deine `hermesvi.env` und `Caddyfile.docker` bleiben), `echo "LISTEN_IP=<NetBird-IP>" > .env` anlegen, dann `docker compose pull && docker compose up -d`.
+
+**Warum `LISTEN_IP`?** Ohne Angabe öffnet Docker die Ports auf *allen* Netzen des Hosts – auch auf öffentlichen IPv6-Adressen, und an der Host-Firewall vorbei. Dann wäre HermesVI aus dem Internet erreichbar und nur noch das Passwort stünde dazwischen.
+
+Ports 80/443 schon belegt (z. B. anderer Reverse-Proxy)? Dann den `caddy`-Dienst aus der Compose-Datei streichen und im vorhandenen Proxy auf `hermesvi:8800` bzw. `127.0.0.1:8800` zeigen – wichtig: Response-Buffering aus (Streaming), `client_max_body_size 12m`, `X-Forwarded-Host` selbst setzen (Vorlage: `nginx-hermesvi.conf`). Beim **Nginx Proxy Manager**: Access List auf NetBird-/LAN-Adressen beschränken und trotzdem `APP_PASSWORD` setzen. Läuft der Proxy *nicht* auf dem Docker-Host oder in einem Docker-Netz, seine Adresse in `TRUSTED_PROXIES` eintragen.
 
 ## Installation direkt auf der Hermes-VM (Alternative ohne Docker)
 
@@ -136,7 +140,7 @@ Büroklammer neben dem Mikrofon (Handy) bzw. links im Chat (Desktop) – oder ei
 | PDF | Text wird ausgelesen (bis `ATTACH_MAX_CHARS`). Eingescannte PDFs ohne Text: als Foto schicken |
 | Word (.docx), Text, Markdown, CSV, JSON, Code | Text wird ausgelesen |
 
-Max. 5 Anhänge pro Nachricht, je 8 MB. Hermes' API nimmt andere Dateien als Bilder nicht an – deshalb liest HermesVI den Text selbst aus und gibt ihn klar als Daten gekennzeichnet weiter. Die Dateien selbst landen nicht auf der Hermes-VM.
+Max. 5 Anhänge pro Nachricht, je 8 MB. PDF und Word werden in einem eigenen, begrenzten Prozess ohne Zugangsdaten gelesen (max. 20 s Rechenzeit, 768 MB Speicher) – präparierte Dateien können den Server nicht blockieren. Ganz abschalten: `ATTACH_ENABLED=false` (Desktop: in den Einstellungen). Hermes' API nimmt andere Dateien als Bilder nicht an – deshalb liest HermesVI den Text selbst aus und gibt ihn klar als Daten gekennzeichnet weiter. Die Dateien selbst landen nicht auf der Hermes-VM.
 
 ## Einstellungen im Panel (Tab „System“)
 

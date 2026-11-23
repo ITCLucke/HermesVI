@@ -1,0 +1,15 @@
+# Hält Abhängigkeiten aktuell – Dependabot öffnet bei neuen (Sicherheits-)Versionen einen Pull Request
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: docker          # Basis-Image python:3.12-slim
+    directory: /docker
+    schedule: { interval: weekly }
+  - package-ecosystem: pip
+    directory: /docker
+    schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /desktop
+    schedule: { interval: weekly }

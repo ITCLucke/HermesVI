@@ -10,16 +10,19 @@ Die Hermes-Keys bleiben auf dem Server, der Browser sieht sie nie.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
-import html
-import io
+import hashlib
+import importlib.util
+import ipaddress
 import json
 import os
 import re
 import secrets
+import sys
 import time
 import uuid
-import zipfile
+from urllib.parse import quote
 from pathlib import Path
 
 import httpx
@@ -57,6 +60,13 @@ APP_PASSWORD    = env("APP_PASSWORD")
 ALLOW_NO_AUTH   = env("ALLOW_NO_AUTH").lower() in ("1", "true", "yes", "ja")
 # Optional: nur diese Hostnamen annehmen (Schutz gegen DNS-Rebinding), z. B. hermesvi.lan.example
 ALLOWED_HOSTS   = {h.strip().lower() for h in env("ALLOWED_HOSTS").split(",") if h.strip()}
+# Nur von diesen Adressen werden X-Forwarded-Host/-For geglaubt (Reverse-Proxy). Standard: lokal + Docker-Netze.
+try:
+    TRUSTED_PROXIES = [ipaddress.ip_network(x.strip(), strict=False)
+                       for x in env("TRUSTED_PROXIES", "127.0.0.0/8,::1/128,172.16.0.0/12").split(",") if x.strip()]
+except ValueError as e:
+    raise SystemExit(f"[hermesvi] TRUSTED_PROXIES ungültig: {e}")
+ATTACH_ENABLED  = env("ATTACH_ENABLED", "true").lower() not in ("0", "false", "no", "nein")
 # Kanban-Meldungen: agent = Agent fasst das Ergebnis zusammen | announce = nur Titel + Status ansagen
 NOTIFY_MODE     = env("NOTIFY_MODE", "agent") if env("NOTIFY_MODE", "agent") in ("agent", "announce") else "agent"
 MAX_TEXT        = 64 * 1024            # Zeichen pro Nachricht
@@ -77,6 +87,42 @@ LOG_SKIP        = env("LOG_SKIP", r"Native session startup recovery|receipt refu
 STATIC_DIR      = Path(__file__).parent / "static"
 
 app = FastAPI(title="HermesVI", docs_url=None, redoc_url=None)
+
+
+class BodyLimit:
+    """Anfragen ohne Content-Length (Transfer-Encoding: chunked) höchstens bis MAX_BODY annehmen.
+    Mit Content-Length prüft access_guard die Größe vorab, und uvicorn liest nie mehr als angegeben.
+    Wird als ERSTE Middleware registriert und liegt damit innen – läuft also erst NACH Zugangsschutz und
+    CSRF-Prüfung: Unangemeldete können den Server nicht puffern lassen."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or any(k == b"content-length" for k, _ in scope["headers"]):
+            return await self.app(scope, receive, send)
+        body, more = bytearray(), True
+        while more:
+            msg = await receive()
+            if msg["type"] == "http.disconnect":
+                return
+            body += msg.get("body", b"")
+            more = msg.get("more_body", False)
+            if len(body) > MAX_BODY:
+                return await JSONResponse({"error": "Anfrage zu groß"}, status_code=413)(scope, receive, send)
+        sent = False
+
+        async def replay():
+            nonlocal sent
+            if not sent:
+                sent = True
+                return {"type": "http.request", "body": bytes(body), "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay, send)
+
+
+app.add_middleware(BodyLimit)   # zuerst registriert = innerste Schicht (nach Auth/CSRF)
 client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=5.0))
 
 # ---------------------------------------------------------------- Lokale Spracherkennung
@@ -94,6 +140,15 @@ def _load_whisper():
     except Exception as e:  # Modell-Download oder Import fehlgeschlagen
         _whisper_state = f"error: {e}"[:200]
         print(f"[hermesvi] Whisper konnte nicht geladen werden: {e}", flush=True)
+
+
+@app.on_event("startup")
+async def _startup_warnings():
+    if not APP_PASSWORD and ALLOW_NO_AUTH:
+        print("[hermesvi] WARNUNG: ALLOW_NO_AUTH=true – HermesVI fragt kein Passwort ab. Jeder, der den Proxy "
+              "erreicht, steuert den Agenten. Empfohlen: zusätzlich APP_PASSWORD setzen.", flush=True)
+    if not ATTACH_ENABLED:
+        print("[hermesvi] Anhänge sind abgeschaltet (ATTACH_ENABLED=false).", flush=True)
 
 
 @app.on_event("startup")
@@ -134,6 +189,17 @@ _chat_history: dict[str, list[dict]] = {}
 
 
 _MAX_SESSIONS = 20
+_MAX_HISTORY_CHARS = 400_000              # pro Sitzung – Dokument-Anhänge machen den Verlauf sonst riesig
+
+
+def _session_id(raw) -> str:
+    """Sitzungsname kommt vom Browser und geht an Hermes – nur harmlose Zeichen zulassen."""
+    return re.sub(r"[^A-Za-z0-9_-]", "", str(raw or ""))[:64] or "main"
+
+
+def _trim_history(hist: list[dict]) -> None:
+    while len(hist) > 1 and sum(len(str(m.get("content", ""))) for m in hist) > _MAX_HISTORY_CHARS:
+        del hist[0]
 
 
 def _history(session: str) -> list[dict]:
@@ -156,8 +222,22 @@ def hermes_headers(session: str | None = None) -> dict:
 _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
+def _from_proxy(request: Request) -> bool:
+    """Kommt die Verbindung von einem vertrauenswürdigen Reverse-Proxy? Nur dann gelten X-Forwarded-*-Header."""
+    try:
+        ip = ipaddress.ip_address(request.client.host if request.client else "")
+    except ValueError:
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return any(ip in net for net in TRUSTED_PROXIES)
+
+
 def _req_host(request: Request) -> str:
-    return (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip().lower()
+    host = request.headers.get("host") or ""
+    if _from_proxy(request):
+        host = request.headers.get("x-forwarded-host") or host
+    return host.split(",")[0].strip().lower()
 
 
 def _same_origin(request: Request) -> bool:
@@ -172,6 +252,11 @@ def _same_origin(request: Request) -> bool:
     elif origin == "null":
         return False
     return True
+
+
+def _bridge_ok(request: Request) -> bool:
+    return bool(NOTIFY_TOKEN) and secrets.compare_digest(request.headers.get("authorization", "").encode(),
+                                                         f"Bearer {NOTIFY_TOKEN}".encode())
 
 
 def _is_bridge(request: Request) -> bool:
@@ -197,9 +282,12 @@ _FAIL_LIMIT, _FAIL_WINDOW = 10, 900     # 10 Fehlversuche in 15 Minuten → 15 M
 
 
 def _client_ip(request: Request) -> str:
-    # hinter einem Reverse-Proxy steht die echte Adresse als letzter Eintrag in X-Forwarded-For
+    peer = request.client.host if request.client else "?"
+    if not _from_proxy(request):          # direkt verbunden: Header sind frei erfindbar → echte Gegenstelle zählt
+        return peer
+    # hinter dem Reverse-Proxy steht die echte Adresse als letzter Eintrag in X-Forwarded-For
     xff = request.headers.get("x-forwarded-for", "")
-    return (xff.split(",")[-1].strip() if xff else "") or (request.client.host if request.client else "?")
+    return (xff.split(",")[-1].strip() if xff else "") or peer
 
 
 _NO_AUTH_PAGE = """<!doctype html><meta charset="utf-8"><title>HermesVI – Zugangsschutz fehlt</title>
@@ -218,7 +306,11 @@ async def access_guard(request: Request, call_next):
     cl = request.headers.get("content-length")
     if cl and cl.isdigit() and int(cl) > MAX_BODY:
         return JSONResponse({"error": "Anfrage zu groß"}, status_code=413)
-    if path == "/health" or _is_bridge(request):
+    if path == "/health":
+        return await call_next(request)
+    if _is_bridge(request):                       # Brücke: eigenes Token – vor dem Lesen des Inhalts prüfen
+        if not _bridge_ok(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
         return await call_next(request)
     if not APP_PASSWORD:
         if ALLOW_NO_AUTH:
@@ -251,7 +343,16 @@ async def access_guard(request: Request, call_next):
 
 
 # ---------------------------------------------------------------- Sicherheits-Header
-_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+def _script_hashes(*files: Path) -> str:
+    """Nur genau die eigenen eingebetteten Skripte erlauben (Hash) – eingeschleuster Code liefe nicht."""
+    out = []
+    for f in files:
+        for js in re.findall(r"<script>([\s\S]*?)</script>", f.read_text(encoding="utf-8")):
+            out.append("'sha256-" + base64.b64encode(hashlib.sha256(js.encode("utf-8")).digest()).decode() + "'")
+    return " ".join(out)
+
+
+_CSP = (f"default-src 'self'; script-src 'self' {_script_hashes(STATIC_DIR / 'index.html')}; style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; "
         "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 
@@ -300,7 +401,7 @@ async def status():
     out = {"name": AGENT_NAME, "mode": HERMES_MODE, "tts": TTS_BACKEND, "stt": STT_BACKEND,
            "hermes": False, "audio": False, "model": None, "notify_mode": NOTIFY_MODE,
            "auth": "password" if APP_PASSWORD else "proxy",
-           "attach": {"pdf": HAVE_PDF, "max_files": MAX_FILES, "max_mb": MAX_FILE // 1024 // 1024}}
+           "attach": {"enabled": ATTACH_ENABLED, "pdf": HAVE_PDF, "max_files": MAX_FILES, "max_mb": MAX_FILE // 1024 // 1024}}
     t0 = time.perf_counter()
     try:
         r = await client.get(f"{HERMES_URL}/health", timeout=3)
@@ -333,19 +434,18 @@ async def status():
 
 # ---------------------------------------------------------------- Anhänge (Bilder und Dokumente)
 # Hermes nimmt über die API Bilder direkt an (input_image / image_url). Andere Dateien gehen dort nicht –
-# deshalb wird ihr Text hier ausgelesen und als klar markierter Datenblock an die Nachricht gehängt.
-try:
-    from pypdf import PdfReader
-    HAVE_PDF = True
-except Exception:          # pragma: no cover
-    HAVE_PDF = False
-
+# deshalb wird ihr Text ausgelesen und als klar markierter Datenblock an die Nachricht gehängt.
+# PDF und Word werden in einem eigenen, begrenzten Prozess ohne Zugangsdaten gelesen (extract.py).
+HAVE_PDF   = importlib.util.find_spec("pypdf") is not None
+EXTRACT_PY = Path(__file__).parent / "extract.py"
+EXTRACT_TIMEOUT = 30
 MAX_FILES  = 5
 MAX_FILE   = 8 * 1024 * 1024
 TEXT_EXT   = {"txt", "md", "csv", "tsv", "json", "yaml", "yml", "xml", "html", "htm", "log", "ini", "conf", "cfg",
               "toml", "py", "js", "ts", "sh", "sql", "css", "java", "c", "cpp", "h", "go", "rs", "php", "rb", "ps1", "bat"}
 _IMG_MAGIC = ((b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG\r\n\x1a\n", "image/png"), (b"GIF8", "image/gif"))
 DEFAULT_ATTACH_TEXT = "Schau dir bitte den Anhang an."
+_extract_slots = asyncio.Semaphore(2)          # höchstens zwei Dateien gleichzeitig auswerten
 
 
 class AttachError(ValueError):
@@ -372,42 +472,43 @@ def _decode_text(raw: bytes) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def _docx_text(raw: bytes) -> str:
+async def _extract(kind: str, raw: bytes) -> dict:
+    """PDF/DOCX im Subprozess lesen: leere Umgebung (keine Keys), CPU-/Speicher-/Zeitlimit, Server blockiert nicht."""
+    async with _extract_slots:
+        # -I: keine Umgebungs-/Benutzerpfade, -B: keine .pyc schreiben (Prozess darf keine Dateien schreiben)
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-I", "-B", str(EXTRACT_PY), kind, str(ATTACH_MAX_CHARS),
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            env={"PATH": os.environ.get("PATH", "/usr/bin:/bin")}, cwd="/")
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(raw), timeout=EXTRACT_TIMEOUT)
+        except asyncio.TimeoutError:
+            raise AttachError("Auswertung hat zu lange gedauert")
+        finally:                                   # auch bei Zeitüberschreitung oder abgebrochener Anfrage beenden
+            if proc.returncode is None:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+                await proc.wait()
+    if proc.returncode != 0:
+        print(f"[hermesvi] Anhang-Auswertung abgebrochen (Code {proc.returncode}): {err[-300:]!r}", flush=True)
+        raise AttachError("lässt sich nicht lesen (zu aufwendig oder beschädigt)")
     try:
-        with zipfile.ZipFile(io.BytesIO(raw)) as z:
-            info = z.getinfo("word/document.xml")
-            if info.file_size > 50 * 1024 * 1024:
-                raise AttachError("Dokument zu groß")
-            xml = z.read(info).decode("utf-8", errors="replace")
-    except (zipfile.BadZipFile, KeyError):
-        raise AttachError("kein gültiges Word-Dokument (.docx)")
-    xml = re.sub(r"<w:tab/>", "\t", xml)
-    xml = re.sub(r"</w:p>|<w:br/>", "\n", xml)
-    return html.unescape(re.sub(r"<[^>]+>", "", xml))
+        res = json.loads(out)
+    except ValueError:
+        raise AttachError("lässt sich nicht lesen")
+    if "error" in res:
+        raise AttachError(str(res["error"])[:200])
+    return res
 
 
-def _pdf_text(raw: bytes) -> tuple[str, int]:
-    if not HAVE_PDF:
-        raise AttachError("PDF wird nicht unterstützt (pypdf fehlt)")
-    try:
-        reader = PdfReader(io.BytesIO(raw))
-        if reader.is_encrypted:
-            try:
-                reader.decrypt("")
-            except Exception:
-                raise AttachError("PDF ist passwortgeschützt")
-        pages = [(p.extract_text() or "") for p in reader.pages[:300]]
-    except AttachError:
-        raise
-    except Exception as e:
-        raise AttachError(f"PDF lässt sich nicht lesen ({e.__class__.__name__})")
-    text = "\n\n".join(f"--- Seite {i + 1} ---\n{t.strip()}" for i, t in enumerate(pages) if t.strip())
-    if not text:
-        raise AttachError("PDF enthält keinen lesbaren Text (eingescannt?) – als Foto/Bild schicken")
-    return text, len(reader.pages)
+def _safe_name(name: str) -> str:
+    """Dateiname kommt in den Prompt – Steuer- und Klammerzeichen entfernen."""
+    return re.sub(r"[\x00-\x1f\x7f<>\[\]{}\"„“”`]", "", name).strip()[:120] or "Datei"
 
 
-def parse_attachments(items) -> tuple[list[dict], list[dict]]:
+async def parse_attachments(items) -> tuple[list[dict], list[dict]]:
     """Prüft die Anhänge aus dem Browser. Liefert (bilder, dokumente)."""
     if not items:
         return [], []
@@ -419,7 +520,7 @@ def parse_attachments(items) -> tuple[list[dict], list[dict]]:
     for it in items:
         if not isinstance(it, dict):
             raise AttachError("Anhang ungültig")
-        name = re.sub(r"[\x00-\x1f<>]", "", str(it.get("name") or "Datei"))[:120] or "Datei"
+        name = _safe_name(str(it.get("name") or "Datei"))
         try:
             raw = base64.b64decode(str(it.get("data") or ""), validate=True)
         except Exception:
@@ -435,23 +536,21 @@ def parse_attachments(items) -> tuple[list[dict], list[dict]]:
                 images.append({"name": name, "url": f"data:{mime};base64,{base64.b64encode(raw).decode()}"})
                 continue
             if ext == "pdf" or raw.startswith(b"%PDF"):
-                text, n = _pdf_text(raw)
-                kind = f"PDF, {n} Seite{'n' if n != 1 else ''}"
+                if not HAVE_PDF:
+                    raise AttachError("PDF wird nicht unterstützt (pypdf fehlt)")
+                res = await _extract("pdf", raw)
             elif ext == "docx":
-                text, kind = _docx_text(raw), "Word"
+                res = await _extract("docx", raw)
             elif ext in TEXT_EXT or str(it.get("type") or "").startswith("text/"):
-                text, kind = _decode_text(raw), "Text"
+                full = _decode_text(raw).strip()
+                res = {"text": full[:ATTACH_MAX_CHARS], "cut": len(full) > ATTACH_MAX_CHARS, "kind": "Text"}
             else:
                 raise AttachError("Dateityp wird nicht unterstützt")
         except AttachError as e:
-            if str(e).startswith("„"):
-                raise
             raise AttachError(f"„{name}“: {e}")
-        text = text.strip()
-        if not text:
+        if not res.get("text"):
             raise AttachError(f"„{name}“ enthält keinen Text")
-        cut = len(text) > ATTACH_MAX_CHARS
-        docs.append({"name": name, "kind": kind, "text": text[:ATTACH_MAX_CHARS], "cut": cut})
+        docs.append({"name": name, "kind": str(res.get("kind") or "Dokument"), "text": res["text"], "cut": bool(res.get("cut"))})
     return images, docs
 
 
@@ -538,6 +637,7 @@ async def stream_responses(text: str, session: str, images: list[dict] | None = 
 async def stream_chat(text: str, session: str, images: list[dict] | None = None):
     hist = _history(session)
     hist.append({"role": "user", "content": text})        # im Verlauf nur Text – Bilder nicht dauerhaft mitschleppen
+    _trim_history(hist)
     messages = [{"role": "system", "content": VOICE_HINT}] + hist[-40:]
     if images:
         messages[-1] = {"role": "user", "content": [{"type": "text", "text": text}]
@@ -578,9 +678,11 @@ async def chat(request: Request):
     if not isinstance(payload, dict):
         return JSONResponse({"error": "ungültig"}, status_code=400)
     text = str(payload.get("text") or "").strip()
-    session = str(payload.get("session") or "main")[:64]
+    session = _session_id(payload.get("session"))
+    if payload.get("attachments") and not ATTACH_ENABLED:
+        return JSONResponse({"error": "Anhänge sind auf diesem Server abgeschaltet (ATTACH_ENABLED)"}, status_code=403)
     try:
-        images, docs = parse_attachments(payload.get("attachments"))
+        images, docs = await parse_attachments(payload.get("attachments"))
     except AttachError as e:
         return JSONResponse({"error": f"Anhang: {e}"}, status_code=400)
     if not text and (images or docs):
@@ -608,7 +710,7 @@ async def chat(request: Request):
 @app.post("/api/reset")
 async def reset(request: Request):
     payload = await request.json()
-    _chat_history.pop(str((payload or {}).get("session") or "main")[:64], None)
+    _chat_history.pop(_session_id((payload or {}).get("session")), None)
     return {"ok": True}
 
 
@@ -743,7 +845,7 @@ async def _dashboard_loop():
                         continue
                     result = t.get("result") or t.get("latest_summary") or ""
                     try:
-                        d = await client.get(f"{DASHBOARD_URL}/api/plugins/kanban/tasks/{tid}", headers=hdr, timeout=20)
+                        d = await client.get(f"{DASHBOARD_URL}/api/plugins/kanban/tasks/{quote(tid, safe='')}", headers=hdr, timeout=20)
                         if d.status_code == 200:
                             full = d.json().get("task") or {}
                             result = full.get("result") or full.get("latest_summary") or result
@@ -779,8 +881,7 @@ async def _start_dashboard():
 @app.post("/api/state")
 async def post_state(request: Request):
     """Alternative Quelle: Brücke auf der Hermes-VM schickt Aufträge + Log."""
-    if not NOTIFY_TOKEN or not secrets.compare_digest(request.headers.get("authorization", "").encode(),
-                                                     f"Bearer {NOTIFY_TOKEN}".encode()):
+    if not _bridge_ok(request):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     payload = await request.json()
     if not isinstance(payload, dict):

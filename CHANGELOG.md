@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.3.1 – 2026-11-23
+
+Sicherheits-Update nach einem zweiten Sicherheits-Check. **Docker-Nutzer: neue `docker-compose.yml` übernehmen und `LISTEN_IP` setzen (siehe unten).**
+
+- **Wichtig – nur noch im VPN lauschen:** Caddy bindet jetzt an `LISTEN_IP` (NetBird-IP des Docker-Hosts) statt an alle Netze. Vorher öffnete Docker 80/443 auf allen Adressen – auch auf öffentlichen IPv6-Adressen und an der Host-Firewall vorbei. Einrichten: `echo "LISTEN_IP=100.64.0.20" > .env` neben der Compose-Datei
+- Behoben: Die Hostnamen-Sperre (`ALLOWED_HOSTS`) ließ sich mit einem gefälschten `X-Forwarded-Host` umgehen. `X-Forwarded-Host/-For` gelten jetzt nur noch von vertrauenswürdigen Proxys (`TRUSTED_PROXIES`, Standard: lokal + Docker-Netze); die nginx-Vorlage setzt den Header selbst
+- Behoben: Die Passwort-Sperre ließ sich ohne Proxy mit wechselndem `X-Forwarded-For` umgehen
+- Behoben: Das Größenlimit (12 MB) ließ sich mit `Transfer-Encoding: chunked` umgehen – greift jetzt immer, und erst nach der Anmeldung
+- Anhänge: PDF und Word werden in einem eigenen Prozess gelesen – ohne Zugangsdaten, mit Zeit- (30 s), Rechen- (20 s) und Speicherlimit (768 MB), ohne Schreibrechte. Präparierte Dateien können den Server nicht mehr blockieren (vorher bis zu 2 s Stillstand bei einem 300-Seiten-PDF)
+- Neu: Anhänge abschaltbar – `ATTACH_ENABLED=false` (Docker) bzw. Schalter in den Desktop-Einstellungen
+- Content-Security-Policy ohne `unsafe-inline` für Skripte: nur die eigenen Skripte laufen (per Hash)
+- Sitzungsnamen und Dateinamen werden bereinigt, bevor sie an Hermes bzw. in den Prompt gehen; Chat-Verlauf pro Sitzung begrenzt
+- Brücken-Token wird geprüft, bevor der Inhalt gelesen wird
+- Herkunftsnachweis (GitHub-Attestierung) für alle Downloads und das Docker-Image: `gh attestation verify <Datei> --repo ITCLucke/HermesVI`
+- Dependabot hält Actions, Basis-Image, Python- und npm-Pakete aktuell
+- Start-Warnung bei `ALLOW_NO_AUTH=true` ohne Passwort; Doku empfiehlt `APP_PASSWORD` auch hinter dem Proxy
+
 ## v1.3.0 – 2026-11-23
 
 Fotos und Dateien an den Agenten schicken.

@@ -19,7 +19,7 @@ const SECRET_KEYS = ["hermesKey", "elevenKey", "dashboardToken", "audioKey"];
 const PUBLIC_KEYS = ["agentName", "userName", "hermesUrl", "hermesMode", "conversation", "reasoning", "voiceHint",
   "sttBackend", "ttsBackend", "sttLanguage", "elevenVoice", "elevenModel", "elevenSttModel", "audioUrl",
   "dashboardUrl", "dashboardInterval", "logName", "logLines", "hotkey", "startHidden",
-  "notifyEnabled", "notifyStatuses", "notifyAssignees", "notifyMode"];
+  "notifyEnabled", "notifyStatuses", "notifyAssignees", "notifyMode", "attachEnabled"];
 const URL_KEYS = ["hermesUrl", "audioUrl", "dashboardUrl"];
 
 let cfgPath, config = {}, win = null, tray = null, server = null, port = 0, quitting = false;

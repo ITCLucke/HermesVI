@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt ${EXTRA_PIP} \
  && useradd -r -u 10001 hermesvi \
  && mkdir -p /models && chown hermesvi /models
 
-COPY server.py .
+COPY server.py extract.py ./
 COPY static ./static
 
 USER hermesvi

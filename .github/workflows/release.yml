@@ -103,6 +103,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write        # Herkunftsnachweis (Sigstore)
+      attestations: write
     env:
       DOCKER_BUILD_RECORD_UPLOAD: false   # sonst landet eine .dockerbuild-Datei im Release
     steps:
@@ -118,6 +120,7 @@ jobs:
         run: |
           ver='${{ needs.version.outputs.version }}'
           img="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/hermesvi"
+          echo "name=$img" >> "$GITHUB_OUTPUT"
           {
             echo "tags<<EOF"
             echo "$img:$ver"
@@ -126,6 +129,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
       - name: Image bauen und veröffentlichen (amd64 + arm64)
+        id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: docker
@@ -140,12 +144,20 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=MIT
           provenance: false
+      - name: Herkunftsnachweis für das Image (prüfbar mit gh attestation verify)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.img.outputs.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
 
   release:
     needs: [version, windows, linux, docker]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write        # Herkunftsnachweis (Sigstore)
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -169,10 +181,15 @@ jobs:
           - **Linux (Ubuntu/Mint):** \`.deb\` per Doppelklick installieren – oder \`.AppImage\` ausführbar machen und starten
           - **Handy/Browser (Docker):** Image \`ghcr.io/itclucke/hermesvi:$ver\` (bzw. \`:latest\`) – Compose-Datei und Vorlagen in \`HermesVI-Docker-v$ver.zip\`. Update: \`docker compose pull && docker compose up -d\`
           - **Prüfsummen:** \`SHA256SUMS.txt\` – Windows: \`Get-FileHash <Datei>\`, Linux: \`sha256sum -c SHA256SUMS.txt --ignore-missing\`
+          - **Echtheit prüfen** (von GitHub Actions aus diesem Repo gebaut): \`gh attestation verify <Datei> --repo ITCLucke/HermesVI\` bzw. \`gh attestation verify oci://ghcr.io/itclucke/hermesvi:$ver --repo ITCLucke/HermesVI\`
           EOF
       - name: Prüfsummen erzeugen
         run: |
           cd assets && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Herkunftsnachweis für alle Downloads (prüfbar mit gh attestation verify)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: assets/*
       - name: Release veröffentlichen
         env:
           GH_TOKEN: ${{ github.token }}

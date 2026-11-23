@@ -51,7 +51,8 @@ Danach `hermes gateway restart` und `systemctl --user restart hermes-dashboard`.
 
 Ein Hermes-Agent hat in der Regel vollen Terminal-Zugriff auf seinen Rechner. **Wer dem Agenten Befehle geben kann, kann alles, was der Agent kann.** Deshalb:
 
-- **Docker-Variante: Zugangsschutz ist Pflicht.** Entweder `APP_PASSWORD` setzen oder – wenn der Reverse-Proxy schon schützt (z. B. *Access List* im Nginx Proxy Manager) – `ALLOW_NO_AUTH=true`. Ohne eines von beiden verweigert HermesVI den Dienst.
+- **Docker-Variante: Zugangsschutz ist Pflicht.** `APP_PASSWORD` setzen – empfohlen auch hinter einem schützenden Reverse-Proxy. `ALLOW_NO_AUTH=true` nur, wenn der Proxy zuverlässig schützt (z. B. *Access List* im Nginx Proxy Manager). Ohne eines von beiden verweigert HermesVI den Dienst.
+- **Nur im VPN lauschen:** In der Compose-Datei bindet Caddy an `LISTEN_IP` (NetBird-IP des Docker-Hosts). Sonst öffnet Docker die Ports auf allen Netzen – auch auf öffentlichen IPv6-Adressen und an der Host-Firewall vorbei.
 - **Kanban-Meldungen:** Im Modus `agent` gibt HermesVI das Ergebnis eines Auftrags an den Agenten weiter. Es kann fremde Inhalte enthalten (Mails, Webseiten) und ist trotz Kennzeichnung ein Einfallstor für Prompt-Injection. Vorsichtiger: `NOTIFY_MODE=announce` bzw. in der Desktop-App „Nur ansagen“.
 - **Mikrofon:** Freihändig heißt auch, dass Fernseher, Videos oder Gäste mitreden können. Mikro aus, wenn du nicht da bist.
 - **Hermes:** für gefährliche Befehle eine Bestätigung verlangen, soweit dein Hermes-Setup das anbietet.
@@ -59,14 +60,17 @@ Ein Hermes-Agent hat in der Regel vollen Terminal-Zugriff auf seinen Rechner. **
 - **Dashboard-Token** ist ein Generalschlüssel fürs Hermes-Dashboard. Nie teilen, bei Verdacht neu erzeugen.
 - **Fernzugriff** nur über VPN (z. B. NetBird, WireGuard, Tailscale), nie offen ins Internet.
 - **ElevenLabs:** Key nur mit den zwei nötigen Rechten und mit Credit-Limit.
-- **Anhänge:** Text aus Dokumenten wird als fremde Daten gekennzeichnet – trotzdem können präparierte Dateien (z. B. PDFs aus Mails) versuchen, den Agenten zu steuern. Nur Dateien schicken, denen du vertraust.
+- **Anhänge:** Text aus Dokumenten wird als fremde Daten gekennzeichnet – trotzdem können präparierte Dateien (z. B. PDFs aus Mails) oder Text in Bildern versuchen, den Agenten zu steuern. Nur Dateien schicken, denen du vertraust, und in Hermes eine Bestätigung für gefährliche Befehle verlangen. Abschalten: `ATTACH_ENABLED=false` bzw. Schalter in den Desktop-Einstellungen.
+- **Verbindung Docker-Host → Hermes-VM** läuft per HTTP mit dem API-Key im Klartext. Beide am besten über die interne Proxmox-Bridge bzw. ein eigenes VLAN verbinden, nicht durchs normale Heimnetz – oder TLS davor.
 - `chmod 600 hermesvi.env`
 
 Eingebaute Schutzmaßnahmen:
 - Keys bleiben auf dem Server bzw. verschlüsselt im Benutzerkonto (Linux: Warnung, wenn kein Schlüsselbund da ist; Einstellungsdatei nur für den eigenen Benutzer lesbar)
-- Schutz gegen fremde Webseiten (CSRF), Content-Security-Policy, kein Einbetten in fremde Seiten (Clickjacking)
-- Passwort-Sperre nach 10 Fehlversuchen, optional nur bestimmte Hostnamen (`ALLOWED_HOSTS`, gegen DNS-Rebinding)
-- Größenlimits (Text 64 KB, Sprache 10 MB, Anfrage 12 MB)
+- Schutz gegen fremde Webseiten (CSRF), Content-Security-Policy ohne `unsafe-inline` für Skripte (nur die eigenen, per Hash), kein Einbetten in fremde Seiten (Clickjacking)
+- Passwort-Sperre nach 10 Fehlversuchen, optional nur bestimmte Hostnamen (`ALLOWED_HOSTS`, gegen DNS-Rebinding); `X-Forwarded-*` gilt nur von vertrauenswürdigen Proxys (`TRUSTED_PROXIES`)
+- Größenlimits (Text 64 KB, Sprache 10 MB, Anfrage 12 MB – auch bei Chunked-Übertragung)
+- PDF/Word-Anhänge werden in einem eigenen Prozess ohne Zugangsdaten und mit Zeit-/Speicherlimit gelesen
+- Herkunftsnachweis für alle Downloads und das Docker-Image: `gh attestation verify <Datei> --repo ITCLucke/HermesVI`
 - Desktop-Server nur auf `127.0.0.1` mit Token pro Start, Fenster kann keine fremden Seiten laden
 - Kanban-Ergebnisse werden als fremde Daten markiert; jede Meldung bearbeitet nur ein Gerät
 - Docker-Container: schreibgeschützt, ohne Root, ohne Linux-Capabilities

@@ -10,8 +10,12 @@ const UI_DIR = path.join(__dirname, "ui");
 const FINISHED = new Set(["done", "failed", "cancelled", "archived"]);
 const TASK_KEYS = ["id", "title", "assignee", "status", "started_at", "created_at", "priority"];
 const MAX_TEXT = 64 * 1024, MAX_BODY = 12 * 1024 * 1024, MAX_SESSIONS = 20;
+// Nur genau die eigenen eingebetteten Skripte erlauben (Hash statt 'unsafe-inline') – eingeschleuster Code liefe nicht
+const SCRIPT_HASHES = ["index.html", "settings.html"].flatMap((f) =>
+  [...fs.readFileSync(path.join(UI_DIR, f), "utf8").matchAll(/<script>([\s\S]*?)<\/script>/g)]
+    .map((m) => `'sha256-${require("crypto").createHash("sha256").update(m[1], "utf8").digest("base64")}'`)).join(" ");
 const SEC_HEADERS = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+  "Content-Security-Policy": `default-src 'self'; script-src 'self' ${SCRIPT_HASHES}; style-src 'self' 'unsafe-inline'; ` +
     "img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; " +
     "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
   "X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
@@ -23,6 +27,11 @@ const zlib = require("zlib");
 const MAX_FILES = 5, MAX_FILE = 8 * 1024 * 1024, ATTACH_MAX_CHARS = 40000;
 const TEXT_EXT = new Set("txt md csv tsv json yaml yml xml html htm log ini conf cfg toml py js ts sh sql css java c cpp h go rs php rb ps1 bat".split(" "));
 const DEFAULT_ATTACH_TEXT = "Schau dir bitte den Anhang an.";
+const MAX_HISTORY_CHARS = 400000;      // pro Sitzung – Dokument-Anhänge machen den Verlauf sonst riesig
+// Sitzungsname kommt vom Browser und geht an Hermes – nur harmlose Zeichen zulassen
+const sessionId = (v) => String(v || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || "main";
+// Dateiname kommt in den Prompt – Steuer- und Klammerzeichen entfernen
+const safeName = (n) => String(n || "").replace(/[\x00-\x1f\x7f<>\[\]{}"„“”`]/g, "").trim().slice(0, 120) || "Datei";
 class AttachError extends Error {}
 
 function imgType(b) {
@@ -72,7 +81,7 @@ function parseAttachments(items) {
   const images = [], docs = [];
   for (const it of items) {
     if (!it || typeof it !== "object") throw new AttachError("Anhang ungültig");
-    const name = String(it.name || "Datei").replace(/[\x00-\x1f<>]/g, "").slice(0, 120) || "Datei";
+    const name = safeName(it.name);
     const b64 = String(it.data || "");
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b64)) throw new AttachError(`„${name}“: Daten beschädigt`);
     const raw = Buffer.from(b64, "base64");
@@ -144,6 +153,7 @@ function createServer(getConfig, hooks = {}) {
       logSkip: c.logSkip ?? "Native session startup recovery|receipt refused|kanban dispatcher: (holding|embedded)|Gateway housekeeping",
       notifyEnabled: c.notifyEnabled ?? true,
       notifyMode: c.notifyMode === "announce" ? "announce" : "agent",
+      attachEnabled: c.attachEnabled !== false,
       notifyStatuses: new Set(String(c.notifyStatuses ?? "done,failed,blocked").split(",").map((x) => x.trim()).filter(Boolean)),
       notifyAssignees: new Set(String(c.notifyAssignees ?? "").split(",").map((x) => x.trim()).filter(Boolean)),
     };
@@ -217,6 +227,7 @@ function createServer(getConfig, hooks = {}) {
         if (!chatHistory.has(session) && chatHistory.size >= MAX_SESSIONS) chatHistory.delete(chatHistory.keys().next().value);
         const hist = chatHistory.get(session) || []; chatHistory.set(session, hist);
         hist.push({ role: "user", content: text });
+        while (hist.length > 1 && hist.reduce((n, m) => n + String(m.content).length, 0) > MAX_HISTORY_CHARS) hist.shift();
         const messages = [{ role: "system", content: c.voiceHint }, ...hist.slice(-40)];   // im Verlauf nur Text
         if (images.length) messages[messages.length - 1] = { role: "user", content: [{ type: "text", text },
           ...images.map((i) => ({ type: "image_url", image_url: { url: i.url } }))] };
@@ -296,7 +307,7 @@ function createServer(getConfig, hooks = {}) {
     const out = { name: c.agentName, mode: c.hermesMode, tts: c.ttsBackend === "browser" ? "browser" : c.ttsBackend, stt: c.sttBackend,
       hermes: false, audio: false, model: null, reasoning: c.reasoning || "hermes", desktop: true, notify_mode: c.notifyMode,
       configured: !!(c.hermesUrl && c.hermesKey),
-      attach: { pdf: false, max_files: MAX_FILES, max_mb: MAX_FILE / 1024 / 1024 },
+      attach: { enabled: c.attachEnabled, pdf: false, max_files: MAX_FILES, max_mb: MAX_FILE / 1024 / 1024 },
       lagebild: c.dashboardUrl && c.dashboardToken ? "dashboard" : "aus" };
     if (state.error) out.lagebild_error = state.error;
     else if (out.lagebild === "dashboard" && !state.ts) out.lagebild_pending = true;
@@ -405,16 +416,17 @@ function createServer(getConfig, hooks = {}) {
       if (req.method === "POST" && url.pathname === "/api/chat") {
         const p = JSON.parse((await readBody(req)).toString() || "{}");
         let text = String(p.text || "").trim();
+        if (p.attachments && p.attachments.length && !C().attachEnabled) return send(res, 403, { error: "Anhänge sind in den Einstellungen abgeschaltet" });
         let att;
         try { att = parseAttachments(p.attachments); }
         catch (e) { if (e instanceof AttachError) return send(res, 400, { error: `Anhang: ${e.message}` }); throw e; }
         if (!text && (att.images.length || att.docs.length)) text = DEFAULT_ATTACH_TEXT;
         if (!text) return send(res, 400, { error: "leer" });
         if (text.length > MAX_TEXT) return send(res, 413, { error: "Nachricht zu lang (max. 64 KB)" });
-        return streamChat(res, composeMessage(text, att.images, att.docs), String(p.session || "main").slice(0, 64), att.images);
+        return streamChat(res, composeMessage(text, att.images, att.docs), sessionId(p.session), att.images);
       }
       if (req.method === "POST" && url.pathname === "/api/reset") {
-        const p = JSON.parse((await readBody(req)).toString() || "{}"); chatHistory.delete(String(p.session || "main")); return send(res, 200, { ok: true });
+        const p = JSON.parse((await readBody(req)).toString() || "{}"); chatHistory.delete(sessionId(p.session)); return send(res, 200, { ok: true });
       }
       if (req.method === "POST" && url.pathname === "/api/stt") return stt(req, res);
       if (req.method === "POST" && url.pathname === "/api/tts") return tts(req, res);

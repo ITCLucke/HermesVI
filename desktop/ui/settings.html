@@ -99,6 +99,7 @@
         <div>
           <label class="chk"><input type="checkbox" name="autostart"> Beim Anmelden starten</label>
           <label class="chk"><input type="checkbox" name="startHidden"> Im Infobereich starten (ohne Fenster)</label>
+          <label class="chk full"><input type="checkbox" name="attachEnabled"> Fotos und Dateien anhängen erlauben <small>Dateien können versteckte Anweisungen an den Agenten enthalten – nur vertrauenswürdige schicken</small></label>
         </div>
       </div>
     </fieldset>
@@ -124,6 +125,7 @@ async function load(){
   if (!s.agentName) f.agentName.value = "Hermes";
   document.getElementById("encWarn").hidden = s.encrypted !== false;
   if (s.notifyEnabled === null || s.notifyEnabled === undefined) f.notifyEnabled.checked = true;
+  if (s.attachEnabled === null || s.attachEnabled === undefined) f.attachEnabled.checked = true;
   if (!s.notifyStatuses) f.notifyStatuses.value = "done,failed,blocked";
   if (!s.notifyMode) f.notifyMode.value = "agent";
   if (s.reasoning === null || s.reasoning === undefined) f.reasoning.value = "low";

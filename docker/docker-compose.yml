@@ -29,9 +29,12 @@ services:
     container_name: hermesvi-caddy
     restart: unless-stopped
     depends_on: [hermesvi]
+    # NUR an die NetBird-IP des Docker-Hosts binden – sonst ist HermesVI auf allen Netzen erreichbar,
+    # auch über öffentliche IPv6-Adressen. LISTEN_IP in eine Datei ".env" neben dieser Datei schreiben:
+    #   echo "LISTEN_IP=100.64.0.20" > .env
     ports:
-      - "443:443"
-      - "80:80"
+      - "${LISTEN_IP:?LISTEN_IP fehlt - echo LISTEN_IP=<NetBird-IP des Docker-Hosts> > .env}:443:443"
+      - "${LISTEN_IP:?LISTEN_IP fehlt - echo LISTEN_IP=<NetBird-IP des Docker-Hosts> > .env}:80:80"
     volumes:
       - ./Caddyfile.docker:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
