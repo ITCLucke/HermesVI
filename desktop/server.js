@@ -10,10 +10,11 @@ const UI_DIR = path.join(__dirname, "ui");
 const FINISHED = new Set(["done", "failed", "cancelled", "archived"]);
 const TASK_KEYS = ["id", "title", "assignee", "status", "started_at", "created_at", "priority"];
 const MAX_TEXT = 64 * 1024, MAX_BODY = 12 * 1024 * 1024, MAX_SESSIONS = 20;
-// Nur genau die eigenen eingebetteten Skripte erlauben (Hash statt 'unsafe-inline') – eingeschleuster Code liefe nicht
+// Nur genau die eigenen eingebetteten Skripte erlauben (Hash statt 'unsafe-inline') – eingeschleuster Code liefe nicht.
+// Zeilenenden vereinheitlichen: Der Browser hasht mit LF, auch wenn die Datei (Windows-Checkout) CRLF hat.
 const SCRIPT_HASHES = ["index.html", "settings.html"].flatMap((f) =>
   [...fs.readFileSync(path.join(UI_DIR, f), "utf8").matchAll(/<script>([\s\S]*?)<\/script>/g)]
-    .map((m) => `'sha256-${require("crypto").createHash("sha256").update(m[1], "utf8").digest("base64")}'`)).join(" ");
+    .map((m) => `'sha256-${require("crypto").createHash("sha256").update(m[1].replace(/\r\n?/g, "\n"), "utf8").digest("base64")}'`)).join(" ");
 const SEC_HEADERS = {
   "Content-Security-Policy": `default-src 'self'; script-src 'self' ${SCRIPT_HASHES}; style-src 'self' 'unsafe-inline'; ` +
     "img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; " +

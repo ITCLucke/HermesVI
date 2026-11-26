@@ -1,0 +1,5 @@
+# Immer LF – sonst stimmen die CSP-Skript-Hashes im Windows-Build nicht
+* text=auto eol=lf
+*.ico binary
+*.png binary
+*.jpg binary

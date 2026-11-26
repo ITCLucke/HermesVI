@@ -347,7 +347,7 @@ def _script_hashes(*files: Path) -> str:
     """Nur genau die eigenen eingebetteten Skripte erlauben (Hash) – eingeschleuster Code liefe nicht."""
     out = []
     for f in files:
-        for js in re.findall(r"<script>([\s\S]*?)</script>", f.read_text(encoding="utf-8")):
+        for js in re.findall(r"<script>([\s\S]*?)</script>", f.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")):
             out.append("'sha256-" + base64.b64encode(hashlib.sha256(js.encode("utf-8")).digest()).decode() + "'")
     return " ".join(out)
 

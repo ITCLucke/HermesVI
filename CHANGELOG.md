@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.3.3 – 2026-11-27
+
+Wichtiger Fix für die Windows-App.
+
+- Behoben: In der Windows-App (seit v1.3.1) lief das Skript der Oberfläche nicht – kein Kreis, keine Uhr, kein Status, kein Einstellungen-Knopf. Ursache: Der Windows-Build hatte Windows-Zeilenenden, dadurch passte der Sicherheits-Hash (Content-Security-Policy) nicht und der Browser blockierte das Skript. Hash wird jetzt unabhängig von Zeilenenden berechnet, das Repo erzwingt LF (`.gitattributes`)
+- Linux-App und Docker waren nicht betroffen
+
 ## v1.3.2 – 2026-11-27
 
 Layout-Fix für schmalere Fenster und Handy.
