@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.2 – 2026-11-27
+
+Layout-Fix für schmalere Fenster und Handy.
+
+- Behoben: Bei Fenstern unter 1300 px Breite schob sich das Eingabefeld „Schreib etwas …“ über längere Untertitel. Kreis, Status, Untertitel, Eingabefeld und Buttons stehen jetzt untereinander und können sich nicht mehr überlappen
+- Der Kreis ist kleiner und nutzt nur noch den freien Platz – auf flachen Bildschirmen schrumpft er mit
+- Untertitel mit Mindesthöhe, damit der Kreis beim Erscheinen von Text nicht springt; bei niedrigen Fenstern etwas kleinere Schrift
+- Buttons sauber mittig ausgerichtet
+
 ## v1.3.1 – 2026-11-23
 
 Sicherheits-Update nach einem zweiten Sicherheits-Check. **Docker-Nutzer: neue `docker-compose.yml` übernehmen und `LISTEN_IP` setzen (siehe unten).**
