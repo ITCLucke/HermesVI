@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.3.4 – 2026-11-27
+
+- Neu: Lautsprecher-Knopf neben dem Mikrofon – Vorlesen auch im schmalen Fenster und auf dem Handy an- und ausschalten (vorher nur im breiten Desktop-Layout oder über die Einstellungen). Bleibt mit dem „Vorlesen“-Knopf und der Einstellung synchron
+- Handy: Knöpfe etwas kleiner, damit alle in eine Reihe passen
+
 ## v1.3.3 – 2026-11-27
 
 Wichtiger Fix für die Windows-App.

@@ -48,6 +48,15 @@
   .btn.main{width:68px;height:68px}
   .btn.off{color:var(--red);border-color:rgba(255,90,106,.5)}
   .btn.panelbtn{display:none}
+  .btn.spk .x{display:none}
+  .btn.spk[aria-pressed="false"]{color:var(--dim)}
+  .btn.spk[aria-pressed="false"] .w{display:none}
+  .btn.spk[aria-pressed="false"] .x{display:inline}
+  @media (max-width: 480px){
+    .controls{gap:10px}
+    .btn{width:50px;height:50px}
+    .btn.main{width:62px;height:62px}
+  }
 
   .textin{position:absolute;left:50%;bottom:calc(108px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(560px,calc(100% - 32px));display:none;z-index:5}
   .textin.show{display:flex}
@@ -273,6 +282,9 @@
       <button class="btn main" id="micBtn" title="Mikrofon an/aus (Leertaste)">
         <svg viewBox="0 0 24 24" id="micIcon"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
       </button>
+      <button class="btn spk" id="spkBtn" aria-pressed="true" aria-label="Sprachausgabe an/aus" title="Vorlesen an/aus – aus: Antworten nur schriftlich">
+        <svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path class="w" d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/><path class="x" d="M16 9l6 6M22 9l-6 6"/></svg>
+      </button>
       <button class="btn" id="stopBtn" title="Unterbrechen (Esc)">
         <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
       </button>
@@ -407,7 +419,7 @@ bindRange("pause","pause", v => (v/1000).toFixed(2)+" s");
 bindRange("speed","speed", v => v.toFixed(2)+"×");
 $("barge").checked=S.barge; $("barge").onchange=()=>{ S.barge=$("barge").checked; store.set("barge",S.barge); };
 function setRead(v){
-  S.read=v; store.set("read",v); $("readChk").checked=v; $("readBtn").setAttribute("aria-pressed", v?"true":"false");
+  S.read=v; store.set("read",v); $("readChk").checked=v; $("readBtn").setAttribute("aria-pressed", v?"true":"false"); $("spkBtn").setAttribute("aria-pressed", v?"true":"false");
   if(!v){ stopSpeech(); if(state==="speaking") setState(busy ? "thinking" : (micStream ? (micOn?"listening":"muted") : "idle")); }
 }
 function stopSpeech(){   // sofort verstummen, Antwort läuft als Text weiter
@@ -418,6 +430,7 @@ function stopSpeech(){   // sofort verstummen, Antwort läuft als Text weiter
 setRead(S.read);
 $("readChk").onchange=()=>setRead($("readChk").checked);
 $("readBtn").onclick=()=>setRead(!S.read);
+$("spkBtn").onclick=()=>setRead(!S.read);
 
 const logPane=$("pane-log"), actPane=$("pane-act");
 const chatList=$("chatList");
