@@ -6,3 +6,7 @@ desktop/config.json
 __pycache__/
 *.mp3
 *.wav
+# aus ui/ erzeugt (node scripts/sync-ui.mjs)
+docker/static/
+desktop/ui/
+.pytest_cache/

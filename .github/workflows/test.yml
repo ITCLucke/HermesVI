@@ -1,0 +1,31 @@
+# Tests für jeden Pull Request – und als Pflicht-Schritt vor jedem Release (release.yml ruft diesen Workflow auf).
+# Prüft: Docker-Server (Anmeldung, Schutzfunktionen, Kanban, Anhänge), Desktop-Server, Oberfläche im Browser.
+name: Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Oberfläche aus ui/ verteilen
+        run: node scripts/sync-ui.mjs
+      - name: Python-Umgebung
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -r docker/requirements.txt pytest playwright
+          .venv/bin/python -m playwright install --with-deps chromium
+      - name: Docker-Server und Oberfläche (pytest)
+        run: .venv/bin/python -m pytest tests/ -v
+      - name: Desktop-Server (node --test)
+        run: node --test tests/desktop.test.js

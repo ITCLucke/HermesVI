@@ -3,6 +3,7 @@
 # Root-Zertifikat für Handy/PC: docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt
 hermesvi.netbird.local, 100.64.0.20 {
     tls internal
+    header Strict-Transport-Security "max-age=31536000"
     reverse_proxy hermesvi:8800 {
         flush_interval -1
     }

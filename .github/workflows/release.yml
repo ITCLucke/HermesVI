@@ -40,8 +40,14 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-  windows:
+  # Ohne grüne Tests kein Release
+  test:
     needs: version
+    if: needs.version.outputs.exists == 'false'
+    uses: ./.github/workflows/test.yml
+
+  windows:
+    needs: [version, test]
     if: needs.version.outputs.exists == 'false'
     runs-on: windows-latest
     defaults:
@@ -58,9 +64,11 @@ jobs:
       - name: Windows-App bauen
         run: |
           npm ci
-          npx electron-packager . HermesVI --platform=win32 --arch=x64 --out=dist --overwrite `
+          node ../scripts/sync-ui.mjs
+          npx electron-packager . HermesVI --platform=win32 --arch=x64 --out=dist --overwrite --asar `
             --icon=assets/icon.ico --app-version=${{ needs.version.outputs.version }} `
-            --ignore='^/dist' --ignore='^/config.json' --ignore='^/LIESMICH.txt'
+            --ignore='^/dist' --ignore='^/build' --ignore='^/config.json' --ignore='^/LIESMICH.txt'
+          node build/fuses.mjs dist/HermesVI-win32-x64/HermesVI.exe
           Copy-Item LIESMICH.txt dist/HermesVI-win32-x64/LIESMICH.txt
           Compress-Archive -Path dist/HermesVI-win32-x64 -DestinationPath "../HermesVI-Windows-${{ needs.version.outputs.tag }}.zip" -CompressionLevel Optimal
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -70,7 +78,7 @@ jobs:
           retention-days: 3
 
   linux:
-    needs: version
+    needs: [version, test]
     if: needs.version.outputs.exists == 'false'
     runs-on: ubuntu-latest
     defaults:
@@ -86,6 +94,7 @@ jobs:
       - name: Linux-App bauen (AppImage + .deb)
         run: |
           npm ci
+          node ../scripts/sync-ui.mjs
           npm pkg set version=${{ needs.version.outputs.version }}
           npx electron-builder --linux AppImage deb --publish never
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -97,7 +106,7 @@ jobs:
           retention-days: 3
 
   docker:
-    needs: version
+    needs: [version, test]
     if: needs.version.outputs.exists == 'false'
     runs-on: ubuntu-latest
     permissions:
@@ -109,6 +118,8 @@ jobs:
       DOCKER_BUILD_RECORD_UPLOAD: false   # sonst landet eine .dockerbuild-Datei im Release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Oberfläche aus ui/ verteilen
+        run: node scripts/sync-ui.mjs
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
@@ -125,6 +136,7 @@ jobs:
             echo "tags<<EOF"
             echo "$img:$ver"
             echo "$img:${ver%.*}"
+            echo "$img:${ver%%.*}"
             echo "$img:latest"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
@@ -167,6 +179,7 @@ jobs:
       - name: Docker-Paket packen
         run: |
           ver='${{ needs.version.outputs.version }}'
+          node scripts/sync-ui.mjs
           mkdir -p stage && cp -r docker stage/hermesvi
           (cd stage && zip -qr9 "../assets/HermesVI-Docker-v$ver.zip" hermesvi)
       - name: Release-Text aus CHANGELOG.md

@@ -6,6 +6,7 @@ const path = require("path");
 const crypto = require("crypto");
 const os = require("os");
 const { createServer } = require("./server");
+const { SECRET_KEYS, PUBLIC_KEYS, applySettings } = require("./settings");
 const TOKEN = crypto.randomBytes(32).toString("hex");   // pro Start neu, nur dem eigenen Fenster bekannt
 const IS_LINUX = process.platform === "linux";
 
@@ -15,12 +16,6 @@ app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 const wantsToggleMic = (argv) => argv.includes("--toggle-mic");
 
-const SECRET_KEYS = ["hermesKey", "elevenKey", "dashboardToken", "audioKey"];
-const PUBLIC_KEYS = ["agentName", "userName", "hermesUrl", "hermesMode", "conversation", "reasoning", "voiceHint",
-  "sttBackend", "ttsBackend", "sttLanguage", "elevenVoice", "elevenModel", "elevenSttModel", "audioUrl",
-  "dashboardUrl", "dashboardInterval", "logName", "logLines", "hotkey", "startHidden",
-  "notifyEnabled", "notifyStatuses", "notifyAssignees", "notifyMode", "attachEnabled"];
-const URL_KEYS = ["hermesUrl", "audioUrl", "dashboardUrl"];
 
 let cfgPath, config = {}, win = null, tray = null, server = null, port = 0, quitting = false;
 
@@ -85,26 +80,14 @@ function strongEncryption() {
   }
   return true;
 }
-// Nur erwartete Typen und gültige Adressen übernehmen
-function cleanValue(k, v) {
-  if (v === null || typeof v === "boolean" || typeof v === "number") return Number.isFinite(v) || typeof v !== "number" ? v : null;
-  if (typeof v !== "string") return undefined;
-  v = v.trim().slice(0, k === "voiceHint" ? 2000 : 500);
-  if (URL_KEYS.includes(k) && v) {
-    try { const u = new URL(v); if (!["http:", "https:"].includes(u.protocol)) return undefined; } catch { return undefined; }
-  }
-  return v;
-}
 async function saveSettings(p) {
-  if (!p || typeof p !== "object") return;
-  for (const k of PUBLIC_KEYS) if (k in p) { const v = cleanValue(k, p[k]); if (v !== undefined) config[k] = v; }
-  config.secrets = config.secrets || {};
-  for (const k of SECRET_KEYS) if (typeof p[k] === "string" && p[k].trim() !== "") config.secrets[k] = p[k].trim().slice(0, 500);
-  for (const k of SECRET_KEYS) if (p["clear_" + k]) config.secrets[k] = "";
+  if (!p || typeof p !== "object") return { cleared: [] };
+  const res = applySettings(config, p);        // geänderte Adresse → zugehöriger Key wird gelöscht (settings.js)
   if (typeof p.autostart === "boolean") setAutostart(p.autostart);
   saveConfig();
   registerHotkey();
   if (tray) tray.setToolTip(config.agentName || "Hermes");
+  return res;
 }
 
 // ------------------------------------------------------------ Fenster

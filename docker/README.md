@@ -11,7 +11,18 @@ Handy / PC (Browser)  ──NetBird──►  Caddy (HTTPS)  ──►  HermesVI
 
 Die Hermes-Keys bleiben auf dem Server; der Browser sieht sie nie.
 
-> **Zugangsschutz ist Pflicht:** In `hermesvi.env` `APP_PASSWORD` setzen – empfohlen auch dann, wenn dein Reverse-Proxy schon schützt. `ALLOW_NO_AUTH=true` (ohne Passwort) nur, wenn der Proxy zuverlässig schützt (z. B. Access List im Nginx Proxy Manager); dann darf *jedes* Gerät, das der Proxy durchlässt, dem Agenten Befehle geben. Ohne eines von beiden zeigt HermesVI nur einen Hinweis und nimmt keine Befehle an.
+> **Zugangsschutz ist Pflicht:** In `hermesvi.env` `APP_PASSWORD` bzw. `APP_PASSWORD_HASH` setzen (siehe [Anmeldung](#anmeldung)) – empfohlen auch dann, wenn dein Reverse-Proxy schon schützt. `ALLOW_NO_AUTH=true` (ohne Passwort) nur, wenn der Proxy zuverlässig schützt (z. B. Access List im Nginx Proxy Manager), und nur zusammen mit `ALLOWED_HOSTS`; dann darf *jedes* Gerät, das der Proxy durchlässt, dem Agenten Befehle geben. Ohne Zugangsschutz zeigt HermesVI nur einen Hinweis und nimmt keine Befehle an.
+
+## Anmeldung
+
+Beim ersten Aufruf zeigt HermesVI eine Anmeldeseite. Nach dem Anmelden bleibt das Gerät **30 Tage** angemeldet (`SESSION_DAYS`) – auch als Web-App auf dem iPhone-Home-Bildschirm. Der iCloud-Schlüsselbund bzw. dein Passwort-Manager kann das Passwort wie bei jeder Website speichern.
+
+- **Wo liegt was?** Das Passwort steht nur in `hermesvi.env` auf dem Docker-Host. Der Browser bekommt ein zufälliges Token als Cookie (`HttpOnly`, `Secure`, `SameSite=Strict`) – nie das Passwort. Auf dem Server liegt nur der Hash dieses Tokens mit Ablaufdatum im Volume `hermesvi_data` (`/data/sessions.json`).
+- **Passwort nur als Hash:** `docker compose run --rm hermesvi python server.py hash-password` → Ausgabe als `APP_PASSWORD_HASH=…` in `hermesvi.env` eintragen und `APP_PASSWORD` leeren. Wer die Datei liest, kennt das Passwort dann trotzdem nicht.
+- **Abmelden:** Panel → System → „Abmelden“. **„Alle Geräte abmelden“** z. B., wenn ein Handy verloren gegangen ist. Ein neues Passwort meldet ebenfalls alle Geräte ab.
+- **Sperre:** 10 Fehlversuche pro Adresse oder 100 insgesamt → 15 Minuten Pause für Passwort-Eingaben. Bereits angemeldete Geräte arbeiten weiter.
+- **Skripte/curl:** Basic-Auth geht weiterhin (`curl -u x:<passwort> https://…/api/status`), gleiche Sperre.
+- **Ohne HTTPS testen** (z. B. `http://127.0.0.1:8800` auf dem Docker-Host): `COOKIE_SECURE=false` setzen, sonst speichert der Browser das Anmelde-Cookie nicht. Im Betrieb immer HTTPS.
 
 ## So fühlt es sich an
 
@@ -56,13 +67,15 @@ nano Caddyfile.docker                                         # NetBird-Name/IP 
 echo "LISTEN_IP=100.64.0.20" > .env                           # NetBird-IP des Docker-Hosts: Caddy lauscht NUR dort
 docker compose up -d
 docker compose logs -f hermesvi
-curl -s http://127.0.0.1:8800/api/status                      # "hermes": true, "audio": true
+curl -s http://127.0.0.1:8800/health                          # {"ok": true} – danach im Browser anmelden, Panel → System
 ```
 
 **Updates:** `docker compose pull && docker compose up -d` – fertig, keine Dateien kopieren. Hermes-VM bleibt unberührt.
-Lieber eine feste Version statt `latest`? In `docker-compose.yml` z. B. `ghcr.io/itclucke/hermesvi:1.2.3` eintragen.
+Die Compose-Datei nutzt `ghcr.io/itclucke/hermesvi:2` – also immer die neueste 2.x, aber nie unbemerkt eine neue Hauptversion. Ganz fest: z. B. `:2.1.0`.
 
-**Selbst bauen** (z. B. für lokale Spracherkennung): in `docker-compose.yml` die Zeile `build: .` einkommentieren, dann `docker compose build --build-arg EXTRA_PIP="faster-whisper edge-tts" && docker compose up -d`.
+**Selbst bauen** (z. B. für lokale Spracherkennung): in `docker-compose.yml` die Zeile `build: .` einkommentieren, dann `docker compose build --build-arg EXTRA_PIP="faster-whisper edge-tts" && docker compose up -d`. Das Paket aus den Releases enthält die Oberfläche schon. Aus einem Git-Klon vorher einmal `node scripts/sync-ui.mjs` im Repo-Ordner ausführen (kopiert `ui/` nach `docker/static/`).
+
+**Umstieg auf 2.1:** die neue `docker-compose.yml` übernehmen (neues Volume `hermesvi_data` für die Anmeldungen, Image `:2`), dann `docker compose pull && docker compose up -d` und auf jedem Gerät einmal anmelden. Wer `ALLOW_NO_AUTH=true` nutzt, muss jetzt `ALLOWED_HOSTS` setzen. Kanban-Meldungen sind jetzt standardmäßig nur Ansagen – das alte Verhalten: `NOTIFY_MODE=agent`.
 
 **Umstieg von Version 1.3.0 oder älter:** die neue `docker-compose.yml` aus dem Paket übernehmen (deine `hermesvi.env` und `Caddyfile.docker` bleiben), `echo "LISTEN_IP=<NetBird-IP>" > .env` anlegen, dann `docker compose pull && docker compose up -d`.
 
@@ -110,12 +123,13 @@ Für deutsche Erkennung die STT-Sprache in Hermes auf Deutsch stellen.
 sudo mkdir -p /opt/hermesvi && sudo cp -r . /opt/hermesvi && cd /opt/hermesvi
 sudo python3 -m venv .venv && sudo .venv/bin/pip install -r requirements.txt
 sudo cp hermesvi.env.example hermesvi.env && sudo nano hermesvi.env     # HERMES_KEY + AUDIO_KEY eintragen
+sudo mkdir -p data && sudo chown hermes data                    # Anmeldungen (DATA_DIR in hermesvi.service)
 sudo cp hermesvi.service /etc/systemd/system/                   # User= anpassen (der Hermes-User)
 sudo systemctl daemon-reload && sudo systemctl enable --now hermesvi
-curl http://127.0.0.1:8800/api/status
+curl -u x:<APP_PASSWORD> http://127.0.0.1:8800/api/status
 ```
 
-`/api/status` muss `"hermes": true` und `"audio": true` zeigen.
+`/api/status` muss `"hermes": true` und `"audio": true` zeigen. Die Oberfläche ohne HTTPS nur zum Testen – dann `COOKIE_SECURE=false`.
 
 ### 4. HTTPS (Pflicht fürs Mikrofon)
 
@@ -156,6 +170,8 @@ Max. 5 Anhänge pro Nachricht, je 8 MB. PDF und Word werden in einem eigenen, be
 | Symptom | Ursache |
 |---|---|
 | Punkt oben links gelb, „Demo-Modus“ | Seite erreicht den Server nicht (z. B. als Datei geöffnet). |
+| Anmeldung klappt, aber man landet wieder auf der Anmeldeseite | Kein HTTPS → Browser verwirft das `Secure`-Cookie. Über HTTPS aufrufen (zum Testen `COOKIE_SECURE=false`). |
+| Nach jedem Neustart neu anmelden | Volume `hermesvi_data` fehlt in der Compose-Datei (bzw. `DATA_DIR` ohne Docker). |
 | „Kein Mikrofon-Zugriff“ | Kein HTTPS oder Mikro im Browser verweigert. |
 | „Spracherkennung lädt noch“ | Nur bei `STT_BACKEND=local`: Whisper-Modell wird beim ersten Start geladen – `docker compose logs hermesvi`, ein paar Minuten warten. |
 | „Anfrage von fremder Seite abgelehnt“ | Schutz gegen fremde Webseiten (CSRF). Kommt das bei normaler Nutzung, setzt der Reverse-Proxy den `Host`-Header nicht durch – im NPM ist das Standard. |
