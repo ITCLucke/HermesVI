@@ -5,6 +5,7 @@ After=network-online.target
 [Service]
 User=hermes
 WorkingDirectory=/opt/hermesvi
+Environment=DATA_DIR=/opt/hermesvi/data
 EnvironmentFile=/opt/hermesvi/hermesvi.env
 ExecStart=/opt/hermesvi/.venv/bin/python server.py
 Restart=always

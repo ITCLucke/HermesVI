@@ -1,8 +1,8 @@
 services:
   hermesvi:
     # Fertiges Image aus den GitHub-Releases. Update: docker compose pull && docker compose up -d
-    # Feste Version statt latest möglich, z. B. ghcr.io/itclucke/hermesvi:1.2.3
-    image: ghcr.io/itclucke/hermesvi:latest
+    # :2 = immer die neueste 2.x (keine Brüche durch eine neue Hauptversion). Ganz fest z. B. :2.1.0
+    image: ghcr.io/itclucke/hermesvi:2
     # Selbst bauen (z. B. für lokale Spracherkennung mit faster-whisper): nächste Zeile einkommentieren,
     # dann: docker compose build --build-arg EXTRA_PIP="faster-whisper edge-tts" && docker compose up -d
     # build: .
@@ -17,6 +17,7 @@ services:
       - "127.0.0.1:8800:8800"
     volumes:
       - whisper_models:/models     # Spracherkennungs-Modell bleibt bei Updates erhalten
+      - hermesvi_data:/data        # Anmeldungen der Geräte (sonst nach jedem Neustart neu anmelden)
     read_only: true
     tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]
@@ -42,5 +43,6 @@ services:
 
 volumes:
   whisper_models:
+  hermesvi_data:
   caddy_data:
   caddy_config:

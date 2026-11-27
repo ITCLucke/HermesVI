@@ -58,7 +58,7 @@
       <legend>Hermes</legend>
       <div class="grid">
         <label class="full"><span>Adresse des API-Servers</span><input name="hermesUrl" placeholder="http://192.168.1.50:8642"><small>IP der Hermes-VM – im LAN oder per NetBird. Auf der VM muss Port 8642 für diesen PC freigegeben sein.</small></label>
-        <label class="full"><span>API-Key (API_SERVER_KEY)</span><input name="hermesKey" type="password" placeholder="••••••••"><small id="s_hermesKey"></small></label>
+        <label class="full"><span>API-Key (API_SERVER_KEY)</span><input name="hermesKey" type="password" placeholder="••••••••"><small id="s_hermesKey"></small><small>Ändert sich die Adresse, muss der Key neu eingegeben werden.</small></label>
         <label><span>Gesprächsfaden</span><input name="conversation" placeholder="hermesvi-pc"><small>eigener Faden für den PC – das Gedächtnis teilt sich der Agent trotzdem</small></label>
         <label><span>Nachdenken im Sprachmodus</span><select name="reasoning"><option value="">wie in Hermes</option><option>none</option><option>minimal</option><option selected>low</option><option>medium</option><option>high</option></select></label>
         <label><span>API-Modus</span><select name="hermesMode"><option value="responses">responses (empfohlen)</option><option value="chat">chat (ältere Hermes-Versionen)</option></select></label>
@@ -87,7 +87,7 @@
         <label><span>Aktualisieren alle … Sekunden</span><input name="dashboardInterval" type="number" min="5" placeholder="15"></label>
         <label class="chk full"><input type="checkbox" name="notifyEnabled"> Der Agent meldet sich von selbst, wenn sich ein Auftrag ändert</label>
         <label><span>Melden bei Status</span><input name="notifyStatuses" placeholder="done,failed,blocked"><small>done = erledigt, failed = fehlgeschlagen, blocked = blockiert, review = zur Prüfung</small></label>
-        <label class="full"><span>Art der Meldung</span><select name="notifyMode"><option value="agent">Agent fasst das Ergebnis zusammen</option><option value="announce">Nur Titel und Status ansagen (sicherer)</option></select><small>„Zusammenfassen“ gibt das Ergebnis an den Agenten weiter – es kann fremde Inhalte aus Mails oder Webseiten enthalten. „Nur ansagen“ hält diese vom Agenten fern; das Ergebnis holt er sich erst, wenn du fragst.</small></label>
+        <label class="full"><span>Art der Meldung</span><select name="notifyMode"><option value="announce">Nur Titel und Status ansagen (empfohlen)</option><option value="agent">Agent fasst das Ergebnis zusammen</option></select><small>„Zusammenfassen“ gibt das Ergebnis an den Agenten weiter – es kann fremde Inhalte aus Mails oder Webseiten enthalten. „Nur ansagen“ hält diese vom Agenten fern; das Ergebnis holt er sich erst, wenn du fragst.</small></label>
         <label><span>Nur diese Agenten</span><input name="notifyAssignees" placeholder="leer = alle, z. B. emilia,research"></label>
       </div>
     </fieldset>
@@ -127,7 +127,7 @@ async function load(){
   if (s.notifyEnabled === null || s.notifyEnabled === undefined) f.notifyEnabled.checked = true;
   if (s.attachEnabled === null || s.attachEnabled === undefined) f.attachEnabled.checked = true;
   if (!s.notifyStatuses) f.notifyStatuses.value = "done,failed,blocked";
-  if (!s.notifyMode) f.notifyMode.value = "agent";
+  if (!s.notifyMode) f.notifyMode.value = "announce";
   if (s.reasoning === null || s.reasoning === undefined) f.reasoning.value = "low";
   for (const k of SECRETS){
     const el = document.getElementById("s_"+k);
@@ -142,7 +142,9 @@ f.onsubmit = async (e) => {
     data[el.name] = el.type === "checkbox" ? el.checked : (el.type === "number" ? Number(el.value)||null : el.value.trim());
   }
   result.innerHTML = "Speichere …";
-  await fetch("/api/settings", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(data)});
+  const saved = await fetch("/api/settings", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(data)}).then(r=>r.json()).catch(()=>({}));
+  const NAMES = {hermesKey:"Hermes-API-Key", dashboardToken:"Dashboard-Token", audioKey:"Audio-Plugin-Key"};
+  const cleared = (saved.cleared||[]).map(k=>NAMES[k]||k);
   for (const k of SECRETS) f[k].value = "";
   await load();
   result.innerHTML = "Teste …";
@@ -150,6 +152,7 @@ f.onsubmit = async (e) => {
   const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const line = (ok, txt) => `<div class="${ok?"ok":"bad"}">${ok?"✓":"✗"} ${esc(txt)}</div>`;
   result.innerHTML =
+    (cleared.length ? `<div class="warn">⚠ Adresse geändert – ${esc(cleared.join(", "))} wurde gelöscht. Bitte neu eingeben.</div>` : "") +
     line(s.hermes, "Hermes " + (s.hermes ? "erreichbar" : "nicht erreichbar" + (s.hermes_error ? " ("+s.hermes_error+")" : ""))) +
     line(!!s.model, "API-Key " + (s.model ? "gültig – Agent: "+s.model : (s.hermes ? "abgelehnt" : "ungeprüft"))) +
     line(s.audio, "Stimme & Erkennung " + (s.audio ? "eingerichtet" : "Key fehlt")) +

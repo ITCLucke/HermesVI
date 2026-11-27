@@ -2,6 +2,7 @@
 # (Caddy-Root-Zertifikat einmal auf Handy/PC installieren, siehe README)
 hermesvi.netbird.local, 100.64.0.10 {
     tls internal
+    header Strict-Transport-Security "max-age=31536000"
     reverse_proxy 127.0.0.1:8800 {
         flush_interval -1
     }

@@ -1,5 +1,46 @@
 # Changelog
 
+## v2.1.0 – 2026-11-27
+
+Sicherheits- und Komfort-Update: Anmeldeseite statt Browser-Passwortfenster, besser lesbare Oberfläche, Tests vor jedem Release. Enthält auch die Korrekturen aus dem Review (geplant als v2.0.1).
+
+**Docker-Nutzer:** neue `docker-compose.yml` übernehmen (Volume `hermesvi_data` für die Anmeldungen), dann `docker compose pull && docker compose up -d` und auf jedem Gerät einmal anmelden. Mit `ALLOW_NO_AUTH=true` ist jetzt `ALLOWED_HOSTS` Pflicht.
+
+**Anmeldung (Docker)**
+- Neu: eigene Anmeldeseite. Das Passwort geht nur beim Anmelden über die Leitung; danach ein zufälliges Token im Cookie (`HttpOnly`, `Secure`, `SameSite=Strict`). Auf dem Server liegt nur dessen Hash. Geräte bleiben 30 Tage angemeldet (`SESSION_DAYS`) – auch die iPhone-Web-App fragt nicht mehr zwischendurch
+- Neu: „Abmelden“ und „Alle Geräte abmelden“ im System-Bereich; ein neues Passwort meldet alle Geräte ab
+- Neu: Passwort nur als scrypt-Hash speichern – `APP_PASSWORD_HASH`, erzeugen mit `docker compose run --rm hermesvi python server.py hash-password`
+- Passwort-Sperre zusätzlich global (100 Fehlversuche insgesamt); die Liste der Fehlversuche wird bei vielen Adressen gekürzt statt komplett gelöscht. Angemeldete Geräte bleiben von der Sperre unberührt
+- Basic-Auth funktioniert weiterhin für Skripte, zeigt aber kein Browser-Passwortfenster mehr
+
+**Sicherheit**
+- Kanban-Meldungen: Standard ist jetzt `NOTIFY_MODE=announce` (nur Titel und Status ansagen). Im Modus `agent` baut der Server die Nachricht an den Agenten selbst – der Browser sieht das Ergebnis nicht mehr und kann es nicht verändern; jede Meldung geht höchstens einmal an den Agenten. **Steht in deiner `hermesvi.env` noch `NOTIFY_MODE=agent`, bleibt es bei diesem Verhalten**
+- `ALLOW_NO_AUTH=true` ohne `ALLOWED_HOSTS` startet nicht mehr (Schutz gegen DNS-Rebinding)
+- Fehlermeldungen im Browser ohne interne Adressen und ohne Antworttexte von Hermes/ElevenLabs – Details im Log
+- `ELEVENLABS_VOICE_ID` wird geprüft (nur Buchstaben/Ziffern)
+- Zusätzliche Header: `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`; Caddy- und nginx-Vorlagen setzen HSTS
+- Desktop: Ändert sich die Hermes-, Dashboard- oder Audio-Adresse, wird der zugehörige Key gelöscht und muss neu eingegeben werden. Der Hermes-Key geht nur noch an ein Audio-Plugin auf demselben Rechner
+- Desktop: Electron-Fuses gesperrt (kein `ELECTRON_RUN_AS_NODE`, kein `NODE_OPTIONS`, kein `--inspect`), App-Code nur aus `app.asar`
+
+**Oberfläche**
+- Behoben: Bei Fensterbreiten unter 1300 px überlappte „Tippen, um das Gespräch zu starten“ den Status
+- Behoben: Im breiten Desktop-Layout war der Mikrofon-Pegel unten abgeschnitten
+- Reiter im Panel mit Abstand, nichts wird mehr abgeschnitten
+- Besser lesbar: Beschriftungen mindestens 12 px, weniger Sperrschrift, hellerer Nebentext
+- Sichtbarer Fokus-Rahmen für die Tastaturbedienung, Beschriftungen für Screenreader; „Bewegung reduzieren“ beruhigt den Orb
+- Demo-Modus zeigt Beispiel-Aufträge und Log statt leerer Spalten
+- iPhone: richtiges App-Symbol auf dem Home-Bildschirm (einmal entfernen und neu hinzufügen)
+- Kanban-Meldungen an den Agenten sind im Chat als „automatisch“ gekennzeichnet
+- Lagebild wird im Hintergrund (Handy) nicht mehr abgefragt
+
+**Technik**
+- Eine Oberfläche für beide Varianten: `ui/` ist die einzige Quelle, `scripts/sync-ui.mjs` verteilt sie
+- Tests: `pytest tests/` (Anmeldung, Schutz, Kanban, Anhänge, Layout im Browser bei drei Fenstergrößen) und `node --test tests/desktop.test.js`. Laufen bei jedem Pull Request; ohne grüne Tests kein Release
+- FastAPI `lifespan` statt veraltetem `on_event`; Hintergrund-Task für das Lagebild wird sicher gehalten
+- Edge-Stimme mit Zeitlimit; Länge der Nachricht wird vor dem Auslesen der Anhänge geprüft
+- Standard-Stimmmodell überall `eleven_flash_v2_5`
+- Docker-Image zusätzlich als `:2` (Hauptversion); die Compose-Vorlage nutzt `:2` statt `:latest`
+
 ## v2.0.0 – 2026-11-27
 
 Großes Update: neues Layout für alle Fenstergrößen, stabile Windows-App. Fasst v1.3.2 bis v1.3.5 zusammen.

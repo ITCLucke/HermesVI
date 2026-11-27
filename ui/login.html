@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05080d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<title>Anmelden · HermesVI</title>
+<style>
+  :root{
+    --bg:#05080d; --bg2:#0a111b; --line:rgba(120,200,255,.14); --line2:rgba(120,200,255,.28);
+    --txt:#d8ecf7; --dim:#8aa1b1; --cyan:#3ee0ff; --red:#ff5a6a;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;background:var(--bg);color:var(--txt);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  body{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:24px;
+       background:radial-gradient(circle at 50% 38%,rgba(62,224,255,.10),transparent 45%),var(--bg)}
+  main{width:min(380px,100%);display:flex;flex-direction:column;align-items:center;gap:28px}
+  .orb{position:relative;width:132px;height:132px}
+  .orb i{position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(62,224,255,.55)}
+  .orb i:nth-child(2){inset:14px;border-color:rgba(62,224,255,.3);border-style:dashed;animation:spin 30s linear infinite}
+  .orb i:nth-child(3){inset:34px;border:0;background:radial-gradient(circle,#fff 0,rgba(62,224,255,.9) 22%,rgba(62,224,255,.25) 60%,transparent 72%);
+       box-shadow:0 0 40px rgba(62,224,255,.35);animation:breathe 4s ease-in-out infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes breathe{50%{transform:scale(1.06)}}
+  h1{margin:0;font-weight:600;font-size:14px;letter-spacing:.28em;text-transform:uppercase;text-align:center}
+  h1 small{display:block;margin-top:10px;font-weight:400;font-size:14px;letter-spacing:0;text-transform:none;color:var(--dim)}
+  form{width:100%;display:flex;flex-direction:column;gap:12px}
+  label{font-size:13px;color:var(--dim)}
+  input{width:100%;height:50px;padding:0 16px;border:1px solid var(--line2);border-radius:12px;background:var(--bg2);color:var(--txt);font:inherit;font-size:17px}
+  input:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(62,224,255,.15)}
+  .user{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  button{height:50px;border:0;border-radius:12px;background:var(--cyan);color:#05080d;font:inherit;font-size:16px;font-weight:600;cursor:pointer}
+  button:focus-visible{outline:2px solid var(--txt);outline-offset:3px}
+  button:disabled{opacity:.6;cursor:wait}
+  #msg{min-height:1.4em;margin:0;font-size:14px;color:var(--red);text-align:center}
+  .note{margin:0;font-size:12.5px;line-height:1.55;color:var(--dim);text-align:center}
+  @media (prefers-reduced-motion: reduce){ .orb i{animation:none!important} }
+</style>
+</head>
+<body>
+<main>
+  <div class="orb" aria-hidden="true"><i></i><i></i><i></i></div>
+  <h1>HermesVI<small>Bitte anmelden, um mit deinem Agenten zu sprechen.</small></h1>
+  <form id="f">
+    <input class="user" name="username" autocomplete="username" value="hermesvi" tabindex="-1" aria-hidden="true">
+    <label for="pw">Passwort</label>
+    <input id="pw" name="password" type="password" autocomplete="current-password" required autofocus>
+    <button type="submit" id="go">Anmelden</button>
+    <p id="msg" role="alert"></p>
+  </form>
+  <p class="note">Dieses Gerät bleibt angemeldet, bis du dich abmeldest oder die Anmeldung abläuft.</p>
+</main>
+<script>
+const f = document.getElementById("f"), msg = document.getElementById("msg"), go = document.getElementById("go");
+f.onsubmit = async (e) => {
+  e.preventDefault();
+  msg.textContent = ""; go.disabled = true;
+  try {
+    const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: f.password.value }) });
+    if (r.ok) { location.replace("/"); return; }
+    let j = {}; try { j = await r.json(); } catch {}
+    msg.textContent = j.error || ("Anmeldung fehlgeschlagen (" + r.status + ")");
+    f.password.select();
+  } catch {
+    msg.textContent = "Server nicht erreichbar";
+  }
+  go.disabled = false;
+};
+</script>
+</body>
+</html>
