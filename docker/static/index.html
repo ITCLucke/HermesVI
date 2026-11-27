@@ -203,10 +203,11 @@
     .start{display:none}
     .panel .tabs{display:none}
     .panel{gap:0}
-    #pane-log{display:none!important}
+    /* Reiter aus dem schmalen Layout gelten hier nicht (Aufträge + Log stehen links) */
+    #pane-log,#pane-board,#pane-logs{display:none!important}
     #pane-act,#pane-sys{display:block!important}
-    #pane-act{flex:1}
-    #pane-sys{flex:none;max-height:55%;border-top:1px solid var(--line)}
+    #pane-act{flex:2 1 0}
+    #pane-sys{flex:1 1 0;border-top:1px solid var(--line)}   /* max. 1/3, scrollt */
     .pane h4.deskonly{display:block}
   }
   @media (max-width: 1299px){
@@ -478,6 +479,8 @@ function addEvent(name, preview, done){
   const e=document.createElement("div"); e.className="ev"+(done?" done":"");
   const t=new Date().toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
   e.innerHTML=`<time>${t}</time><div><b></b><p></p></div>`;
+  if(preview && typeof preview==="object"){ try{ preview=JSON.stringify(preview); }catch{ preview=""; } }
+  if(preview && preview.length>300) preview=preview.slice(0,300)+" …";
   e.querySelector("b").textContent=name; e.querySelector("p").textContent=preview||"";
   if(!preview) e.querySelector("p").remove();
   actPane.appendChild(e); actPane.scrollTop=actPane.scrollHeight;
@@ -674,7 +677,7 @@ async function converse(text, viaVoice, shown){
   const onTool = (name, preview, done) => {
     if(my!==gen) return;
     addEvent(done ? "✓ fertig" : name, preview, done);
-    if(!done){ addChip(toolLabel(name) + (preview ? " · "+String(preview).replace(/[{}"]/g,"").slice(0,60) : "")); }
+    if(!done){ addChip(toolLabel(name) + (preview && typeof preview!=="object" ? " · "+String(preview).replace(/[{}"]/g,"").slice(0,60) : "")); }
     if(!done && state!=="speaking") setState("thinking", toolLabel(name));
   };
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.3.5 – 2026-11-27
+
+- Behoben: Im breiten Desktop-Layout lagen rechts Aufträge und Aktivität übereinander, wenn vorher im schmalen Fenster der Reiter „Aufträge“ oder „Log“ gewählt war
+- Rechte Spalte neu aufgeteilt: Aktivität oben (2/3), System und Einstellungen unten (max. 1/3, scrollt)
+- Behoben: Aktivität zeigte bei manchen Werkzeug-Ergebnissen „[object Object]“ – jetzt der Inhalt (gekürzt)
+
 ## v1.3.4 – 2026-11-27
 
 - Neu: Lautsprecher-Knopf neben dem Mikrofon – Vorlesen auch im schmalen Fenster und auf dem Handy an- und ausschalten (vorher nur im breiten Desktop-Layout oder über die Einstellungen). Bleibt mit dem „Vorlesen“-Knopf und der Einstellung synchron
