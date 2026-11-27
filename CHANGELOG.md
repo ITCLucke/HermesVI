@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.0.0 – 2026-11-27
+
+Großes Update: neues Layout für alle Fenstergrößen, stabile Windows-App. Fasst v1.3.2 bis v1.3.5 zusammen.
+
+- **Windows-App läuft wieder vollständig:** Seit v1.3.1 blockierte die Sicherheitsrichtlinie (CSP) das Skript der Oberfläche – kein Kreis, keine Uhr, kein Status, kein Einstellungen-Knopf. Behoben
+- **Schmale Fenster und Handy:** Kreis, Status, Untertitel, Eingabefeld und Knöpfe stehen sauber untereinander und überlappen nicht mehr; der Kreis ist kleiner und passt sich dem Platz an
+- **Neu: Lautsprecher-Knopf** neben dem Mikrofon – Vorlesen überall mit einem Klick an/aus, synchron mit „Vorlesen“ und den Einstellungen
+- **Breites Desktop-Layout:** rechte Spalte aufgeräumt – Aktivität oben (2/3), System und Einstellungen unten (max. 1/3, scrollt); keine übereinanderliegenden Bereiche mehr
+- Aktivität zeigt Werkzeug-Ergebnisse lesbar statt „[object Object]“
+- Repo erzwingt LF-Zeilenenden (`.gitattributes`)
+
 ## v1.3.5 – 2026-11-27
 
 - Behoben: Im breiten Desktop-Layout lagen rechts Aufträge und Aktivität übereinander, wenn vorher im schmalen Fenster der Reiter „Aufträge“ oder „Log“ gewählt war
